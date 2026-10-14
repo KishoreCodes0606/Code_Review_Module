@@ -1,0 +1,13 @@
+{
+  "name": "ai-code-review-platform",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI Code Review & Security Analysis Agent - Milestone 1",
+  "scripts": {
+    "dev": "npm --prefix code-submission-ui run dev",
+    "build": "npm --prefix code-submission-ui run build",
+    "preview": "npm --prefix code-submission-ui run preview",
+    "start": "npm --prefix code-submission-ui run dev",
+    "server": "python server.py"
+  }
+}

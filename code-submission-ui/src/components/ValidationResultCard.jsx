@@ -39,10 +39,16 @@ export default function ValidationResultCard({
   }
 
   const isLanguageAccepted = classification?.isAcceptable;
-  const isSyntaxValid = validationResult?.valid;
+  const isLimitExceeded = Boolean(validationResult?.lineLimitExceeded);
+  const isSyntaxValid = validationResult?.valid && !isLimitExceeded;
   const detectedName = classification?.languageName || 'Unknown';
   const errors = validationResult?.errors || [];
   const warnings = validationResult?.warnings || [];
+  const hasMissingItem = Boolean(
+    validationResult?.hasMissingItem ||
+    errors.some(e => e.is_missing_item || e.isMissingItem)
+  );
+  const missingItemErrors = errors.filter(e => e.is_missing_item || e.isMissingItem);
 
   const copyHash = () => {
     if (metrics?.hash) {
@@ -106,15 +112,72 @@ export default function ValidationResultCard({
             </div>
           </div>
         </div>
+      ) : isLimitExceeded ? (
+        /* =========================================================================
+           SCENARIO 2: CODE EXCEEDS SET LINE LIMIT (VALIDATION HALTED EARLY)
+           ========================================================================= */
+        <div className="rounded-xl p-5 border bg-rose-950/40 border-rose-500/70 shadow-lg shadow-rose-950/30 space-y-4">
+          <div className="flex items-start sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3.5">
+              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border bg-rose-500/20 text-rose-400 border-rose-500/40">
+                <AlertOctagon className="w-6 h-6" />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-white tracking-tight">
+                    Code Line Limit Exceeded
+                  </h3>
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-rose-500/25 text-rose-300 border-rose-500/50">
+                    VALIDATION HALTED
+                  </span>
+                </div>
+                <p className="text-xs text-rose-200 mt-1 leading-relaxed">
+                  The submitted code contains <strong className="text-white underline">{validationResult.lineCount} lines</strong>, exceeding the allowed limit of <strong className="text-white underline">{validationResult.maxLines} lines</strong>.
+                  The validator stopped immediately at <strong className="text-yellow-300">line {validationResult.stoppedAtLine || (validationResult.maxLines + 1)}</strong>. The remaining lines were not evaluated.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={onOpenPayloadModal}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors shrink-0"
+            >
+              <Code className="w-3.5 h-3.5" />
+              <span>View JSON</span>
+            </button>
+          </div>
+
+          {/* Limit Threshold Breakdown Table */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-rose-500/20 text-center font-mono">
+            <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+              <span className="text-[10px] text-slate-400 block font-sans">Set Limit</span>
+              <span className="text-sm font-bold text-indigo-300">{validationResult.maxLines} lines</span>
+            </div>
+            <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+              <span className="text-[10px] text-slate-400 block font-sans">Submitted Code</span>
+              <span className="text-sm font-bold text-rose-400">{validationResult.lineCount} lines</span>
+            </div>
+            <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+              <span className="text-[10px] text-slate-400 block font-sans">Stopped At</span>
+              <span className="text-sm font-bold text-yellow-300">Line {validationResult.stoppedAtLine || (validationResult.maxLines + 1)}</span>
+            </div>
+            <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
+              <span className="text-[10px] text-slate-400 block font-sans">Subsequent Code</span>
+              <span className="text-[11px] font-bold text-rose-300 block mt-0.5">NOT VALIDATED</span>
+            </div>
+          </div>
+        </div>
       ) : (
         /* =========================================================================
-           SCENARIO 2: CODE IS ACCEPTED AS PYTHON OR JAVA
+           SCENARIO 3: CODE IS RECOGNIZED AS PYTHON OR JAVA
            ========================================================================= */
         <div
           className={`rounded-xl p-5 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
             isSyntaxValid
               ? 'bg-emerald-950/25 border-emerald-500/50 shadow-lg shadow-emerald-950/20'
-              : 'bg-amber-950/25 border-amber-500/50 shadow-lg shadow-amber-950/20'
+              : 'bg-rose-950/35 border-rose-500/60 shadow-lg shadow-rose-950/30'
           }`}
         >
           <div className="flex items-start sm:items-center gap-3.5">
@@ -122,7 +185,7 @@ export default function ValidationResultCard({
               className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border ${
                 isSyntaxValid
                   ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
-                  : 'bg-amber-500/15 text-amber-400 border-amber-500/30'
+                  : 'bg-rose-500/20 text-rose-400 border-rose-500/40'
               }`}
             >
               {isSyntaxValid ? (
@@ -137,22 +200,28 @@ export default function ValidationResultCard({
                 <h3 className="text-base font-bold text-white tracking-tight">
                   {isSyntaxValid
                     ? `Accepted: Valid ${detectedName} Code`
-                    : `Accepted: ${detectedName} (Syntax Errors Found)`}
+                    : `Code Rejected: ${hasMissingItem ? 'Missing Item Detected' : 'Incorrect Code'} in ${detectedName}`}
                 </h3>
                 <span
                   className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
                     isSyntaxValid
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                      : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                      : hasMissingItem
+                      ? 'bg-amber-500/25 text-amber-300 border-amber-500/50'
+                      : 'bg-rose-500/25 text-rose-300 border-rose-500/50'
                   }`}
                 >
-                  {isSyntaxValid ? 'SYNTAX ACCEPTABLE' : 'SYNTAX ERRORS'}
+                  {isSyntaxValid
+                    ? 'ACCEPTED · SYNTAX VALID'
+                    : hasMissingItem
+                    ? 'REJECTED: MISSING ITEM'
+                    : 'REJECTED: INCORRECT CODE'}
                 </span>
               </div>
-              <p className="text-xs text-slate-300 mt-0.5">
+              <p className="text-xs text-slate-300 mt-1">
                 {isSyntaxValid
                   ? `The code is verified as ${detectedName} and the syntax is acceptable. Code is ready for inspection.`
-                  : `The code belongs to ${detectedName}, but contains ${errors.length} syntax ${errors.length === 1 ? 'error' : 'errors'} that must be resolved:`}
+                  : `This code was recognized as ${detectedName}, but is REJECTED because it contains syntax errors or missing code items. Incomplete or broken code cannot proceed to code review.`}
               </p>
             </div>
           </div>
@@ -168,7 +237,7 @@ export default function ValidationResultCard({
               <span>View JSON</span>
             </button>
 
-            {isSyntaxValid && (
+            {isSyntaxValid ? (
               <button
                 type="button"
                 onClick={onSubmitToPipeline}
@@ -177,57 +246,138 @@ export default function ValidationResultCard({
                 <Send className="w-3.5 h-3.5" />
                 <span>Submit Code</span>
               </button>
+            ) : (
+              <span className="flex-1 sm:flex-initial px-3 py-2 rounded-lg bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs font-semibold flex items-center justify-center gap-1.5">
+                <Ban className="w-3.5 h-3.5 text-rose-400" />
+                <span>Blocked: Resolve Errors</span>
+              </span>
             )}
           </div>
         </div>
       )}
 
-      {/* Syntax Errors List (only for accepted languages with syntax errors) */}
+      {/* =========================================================================
+          HIGHLIGHTED MISSING ITEMS BANNER (Prominent callout when code has missing parts)
+         ========================================================================= */}
+      {isLanguageAccepted && !isSyntaxValid && hasMissingItem && missingItemErrors.length > 0 && (
+        <div className="rounded-xl p-4 border bg-amber-950/30 border-amber-500/50 shadow-md shadow-amber-950/20 space-y-3">
+          <div className="flex items-center gap-2 text-amber-300 font-bold text-sm">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Missing Item Highlighted ({missingItemErrors.length})</span>
+          </div>
+          <div className="grid grid-cols-1 gap-2.5">
+            {missingItemErrors.map((mErr, mIdx) => (
+              <div
+                key={mIdx}
+                className="bg-slate-950/90 rounded-lg p-3 border border-amber-500/40 text-xs space-y-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-amber-500/25 text-amber-300 font-mono font-bold text-[11px] border border-amber-500/40">
+                      Line {mErr.line}:{mErr.col}
+                    </span>
+                    <span className="font-bold text-amber-200">
+                      Missing Item: <span className="text-yellow-300 font-mono underline">{mErr.missing_item || mErr.missingItem || 'Required syntax token'}</span>
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-amber-400/80">
+                    rule: {mErr.rule || 'missing_item'}
+                  </span>
+                </div>
+
+                <p className="text-slate-300 text-[11px] leading-relaxed">
+                  {mErr.missing_detail || mErr.missingDetail || mErr.message}
+                </p>
+
+                {(mErr.snippet || mErr.text) && (
+                  <div className="bg-slate-900/90 p-2 rounded border border-slate-800 font-mono text-[11px] text-slate-300">
+                    <span className="text-slate-600 mr-2">{mErr.line} |</span>
+                    <span className="text-amber-200 font-semibold">{mErr.snippet || mErr.text}</span>
+                  </div>
+                )}
+
+                {mErr.hint && (
+                  <div className="flex items-start gap-1.5 text-emerald-400 text-[11px] pt-1 border-t border-slate-800/80">
+                    <span className="font-semibold shrink-0">👉 Suggested Fix:</span>
+                    <span>{mErr.hint}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Syntax Errors / Code Limit Errors List */}
       {isLanguageAccepted && !isSyntaxValid && errors.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="font-semibold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4" />
-              Syntax Issues in {detectedName} ({errors.length})
+              {isLimitExceeded
+                ? `Code Limit Issue (${errors.length})`
+                : `Issues in ${detectedName} (${errors.length})`}
             </span>
-            <span>Resolve before submitting</span>
+            <span>{isLimitExceeded ? 'Validation stopped at this line' : 'Resolve issues before code can be submitted'}</span>
           </div>
 
           <div className="space-y-2">
-            {errors.map((err, idx) => (
-              <div
-                key={idx}
-                className="p-3.5 rounded-xl bg-slate-900/90 border border-rose-500/30 text-xs space-y-2"
-              >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono font-bold text-[11px] border border-rose-500/30">
-                      Line {err.line}:{err.col}
-                    </span>
-                    <span className="font-semibold text-rose-200">{err.message}</span>
+            {errors.map((err, idx) => {
+              const isMissing = Boolean(err.is_missing_item || err.isMissingItem);
+              return (
+                <div
+                  key={idx}
+                  className={`p-3.5 rounded-xl bg-slate-900/90 border text-xs space-y-2 ${
+                    isMissing ? 'border-amber-500/40' : 'border-rose-500/30'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`px-2 py-0.5 rounded font-mono font-bold text-[11px] border ${
+                        isMissing
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                          : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                      }`}>
+                        Line {err.line}:{err.col}
+                      </span>
+                      {isMissing ? (
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold text-[10px] border border-amber-500/40 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          MISSING: {err.missing_item || err.missingItem || 'Token'}
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-bold text-[10px] border border-rose-500/40 flex items-center gap-1">
+                          <XCircle className="w-3 h-3" />
+                          INCORRECT CODE
+                        </span>
+                      )}
+                      <span className="font-semibold text-rose-200">{err.message}</span>
+                    </div>
+                    {err.rule && (
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        rule: {err.rule}
+                      </span>
+                    )}
                   </div>
-                  {err.rule && (
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      rule: {err.rule}
-                    </span>
+
+                  {(err.snippet || err.text) && (
+                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 overflow-x-auto">
+                      <span className="text-slate-600 select-none mr-2">{err.line} |</span>
+                      <span className={isMissing ? 'text-amber-300 font-semibold' : 'text-rose-300'}>
+                        {err.snippet || err.text}
+                      </span>
+                    </div>
+                  )}
+
+                  {err.hint && (
+                    <div className="flex items-start gap-1.5 text-slate-400 text-[11px]">
+                      <span className="text-emerald-400 font-semibold">Suggested fix:</span>
+                      <span>{err.hint}</span>
+                    </div>
                   )}
                 </div>
-
-                {err.snippet && (
-                  <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-slate-300 overflow-x-auto">
-                    <span className="text-slate-600 select-none mr-2">{err.line} |</span>
-                    <span className="text-rose-300">{err.snippet}</span>
-                  </div>
-                )}
-
-                {err.hint && (
-                  <div className="flex items-start gap-1.5 text-slate-400 text-[11px]">
-                    <span className="text-emerald-400 font-semibold">Suggested fix:</span>
-                    <span>{err.hint}</span>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

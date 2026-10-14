@@ -4,7 +4,7 @@
  * Detects and rejects any other language (JavaScript, C/C++, C#, PHP, Go, Rust, Ruby, HTML, CSS, SQL, Shell, etc.).
  */
 
-export function classifyLanguage(code, filename = '') {
+export function classifyLanguage(code, filename = '', userTargetLanguage = 'auto') {
   if (!code || !code.trim()) {
     return {
       isAcceptable: false,
@@ -193,28 +193,28 @@ export function classifyLanguage(code, filename = '') {
     evidence.other.push('Bash / Shell commands or shebang');
   }
 
-  // Check Python
-  if (/^\s*def\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(.*?\)\s*:/m.test(code)) {
+  // Check Python (Tolerant matching for incomplete/broken syntax)
+  if (/^\s*def\s+[a-zA-Z_][a-zA-Z0-9_]*/m.test(code)) {
     scores.python += 5;
-    evidence.python.push("Python function header ('def ...:')");
+    evidence.python.push("Python function header ('def ...')");
   }
-  if (/^\s*class\s+[a-zA-Z_][a-zA-Z0-9_]*(\(.*?\))?\s*:/m.test(code)) {
+  if (/^\s*class\s+[a-zA-Z_][a-zA-Z0-9_]*/m.test(code) && !code.includes('{')) {
     scores.python += 4;
-    evidence.python.push("Python class declaration ('class ...:')");
+    evidence.python.push("Python class declaration ('class ...')");
   }
-  if (/^\s*elif\s+.*?:/m.test(code)) {
+  if (/^\s*elif\b/m.test(code)) {
     scores.python += 5;
     evidence.python.push("Python 'elif' keyword");
   }
-  if (/^\s*from\s+[a-zA-Z_0-9.]+\s+import\s+/m.test(code) || /^\s*import\s+[a-zA-Z_0-9]+(\s*,\s*[a-zA-Z_0-9]+)*$/m.test(code)) {
+  if (/^\s*from\s+[a-zA-Z_0-9.]+\s+import\s+/m.test(code) || /^\s*import\s+[a-zA-Z_0-9]+/m.test(code)) {
     scores.python += 4;
     evidence.python.push('Python module import statement');
   }
-  if (/\bprint\(.*?\)/.test(code) && !code.includes(';') && !code.includes('{')) {
+  if (/\bprint\s*\(|\bprint\s+["']/.test(code) && !code.includes(';') && !code.includes('{')) {
     scores.python += 3;
-    evidence.python.push('Python print() function');
+    evidence.python.push('Python print statement');
   }
-  if (/^\s*if\s+__name__\s*==\s*['"]__main__['"]:/m.test(code)) {
+  if (/^\s*if\s+__name__\s*==\s*['"]__main__['"]/m.test(code)) {
     scores.python += 6;
     evidence.python.push('Python main entry idiom (if __name__ == "__main__":)');
   }
@@ -226,17 +226,21 @@ export function classifyLanguage(code, filename = '') {
     scores.python += 2;
     evidence.python.push('Python comment style (#)');
   }
+  if (/^\s*(if|for|while|try|with)\s+/m.test(code) && !code.includes('{')) {
+    scores.python += 3;
+    evidence.python.push('Python control flow keyword (if/for/while/try/with)');
+  }
 
-  // Check Java
-  if (/\bpublic\s+(class|interface|enum|record)\s+[a-zA-Z_][a-zA-Z0-9_]*/.test(code)) {
+  // Check Java (Tolerant matching for incomplete/broken syntax)
+  if (/\bpublic\s+(class|interface|enum|record)\b/.test(code)) {
     scores.java += 6;
     evidence.java.push("Java public class/interface declaration");
   }
-  if (/\bpublic\s+static\s+void\s+main\s*\(\s*String\s*(\[\s*\]\s+[a-zA-Z_]|[a-zA-Z_]+\s*\[\s*\])/.test(code)) {
+  if (/\bpublic\s+static\s+void\s+main\b/.test(code)) {
     scores.java += 8;
-    evidence.java.push("Java main method signature: public static void main(String[] args)");
+    evidence.java.push("Java main method signature: public static void main");
   }
-  if (/\bSystem\.(out|err)\.(println|print|printf)\s*\(/.test(code)) {
+  if (/\bSystem\.(out|err)\.(println|print|printf)\b/.test(code)) {
     scores.java += 5;
     evidence.java.push("Java System.out.println statement");
   }
@@ -248,9 +252,17 @@ export function classifyLanguage(code, filename = '') {
     scores.java += 5;
     evidence.java.push("Java package declaration (package ...;)");
   }
+  if (/\b(private|protected|public)\s+[a-zA-Z0-9_<>[\]]+\s+[a-zA-Z0-9_]+\s*\(/.test(code)) {
+    scores.java += 4;
+    evidence.java.push("Java method declaration");
+  }
   if (/\b(throws\s+[a-zA-Z0-9_]+Exception|@Override|try\s*\([a-zA-Z0-9_<>[\]]+\s+[a-zA-Z_]+\s*=)/.test(code)) {
     scores.java += 4;
     evidence.java.push("Java exception throws / try-with-resources / @Override");
+  }
+  if (/\b(String|int|boolean|double|float|long|byte|short|void)\b/.test(code)) {
+    scores.java += 2;
+    evidence.java.push("Java type keywords");
   }
 
   // Find the highest scoring language
@@ -264,16 +276,23 @@ export function classifyLanguage(code, filename = '') {
     }
   }
 
-  // If score is negligible (< 2) and code has curly braces and semicolons, check if it's C/JS or Java
+  // Fallback checks for broken or minimal code
   if (maxScore < 3) {
-    if (code.includes('def ') || code.includes('import ') || code.includes(':') && !code.includes('{')) {
+    if (code.includes('def ') || code.includes('import ') || (code.includes(':') && !code.includes('{'))) {
       maxLang = 'python';
-      maxScore = 3;
+      scores.python = 4;
+      maxScore = 4;
       evidence.python.push('Python indentation and block structure');
-    } else if (code.includes('public ') || code.includes('class ') && code.includes(';')) {
+    } else if (code.includes('public ') || (code.includes('class ') && code.includes(';')) || (code.includes('{') && code.includes(';'))) {
       maxLang = 'java';
-      maxScore = 3;
+      scores.java = 4;
+      maxScore = 4;
       evidence.java.push('Java class structure with semicolons');
+    } else if (!code.includes('{') && !code.includes(';') && (code.includes('=') || code.includes('('))) {
+      maxLang = 'python';
+      scores.python = 3;
+      maxScore = 3;
+      evidence.python.push('Python script structure');
     }
   }
 

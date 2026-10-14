@@ -8,7 +8,9 @@ import {
   RotateCcw,
   Sparkles,
   FileCode,
-  BookOpen
+  BookOpen,
+  SlidersHorizontal,
+  AlertOctagon
 } from 'lucide-react';
 import { SAMPLE_CODES } from '../data/sampleCodes';
 
@@ -21,17 +23,24 @@ export default function CodeEditor({
   onLoadSample,
   errors = [],
   isValidating = false,
-  metrics
+  metrics,
+  maxLines = 50,
+  onChangeMaxLines
 }) {
   const textareaRef = useRef(null);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
   const [selectedSample, setSelectedSample] = useState('');
 
-  // Extract set of error lines for quick gutter marker
-  const errorLineSet = new Set(errors.map(err => err.line));
+  // Extract map of error lines for quick gutter marker
+  const errorMap = new Map();
+  errors.forEach(err => errorMap.set(err.line, err));
+  const hasMissingItem = errors.some(err => err.is_missing_item || err.isMissingItem);
+  const firstError = errors[0];
 
   const lines = code ? code.split('\n') : [''];
   const lineCount = lines.length;
+  const isLimitExceeded = Boolean(maxLines && lineCount > maxLines);
+  const exceededBy = isLimitExceeded ? lineCount - maxLines : 0;
 
   const handleCursorMove = (e) => {
     const textarea = e.target;
@@ -92,7 +101,7 @@ export default function CodeEditor({
       {/* Editor Top Toolbar */}
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 bg-slate-950/70 border-b border-slate-800 text-xs">
         {/* Left: Code status & preset selector */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
           <div className="flex items-center gap-1.5 text-slate-300 font-medium">
             <FileCode className="w-4 h-4 text-indigo-400" />
             <span>Editor</span>
@@ -100,22 +109,46 @@ export default function CodeEditor({
 
           <div className="h-4 w-px bg-slate-800 hidden sm:block"></div>
 
+          {/* Fixed Line Limit Configurator */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-900 border border-slate-700/80 text-slate-300">
+            <SlidersHorizontal className="w-3.5 h-3.5 text-indigo-400" />
+            <span className="text-slate-400 text-[11px] font-medium hidden sm:inline">Limit:</span>
+            <select
+              value={maxLines}
+              onChange={(e) => onChangeMaxLines && onChangeMaxLines(Number(e.target.value))}
+              className="bg-transparent text-slate-200 text-xs font-semibold focus:outline-none cursor-pointer"
+              title="Set the maximum allowed line limit for the pasting section"
+            >
+              <option value={20} className="bg-slate-900 text-white">20 lines</option>
+              <option value={35} className="bg-slate-900 text-white">35 lines</option>
+              <option value={50} className="bg-slate-900 text-white">50 lines (Default)</option>
+              <option value={75} className="bg-slate-900 text-white">75 lines</option>
+              <option value={100} className="bg-slate-900 text-white">100 lines</option>
+              <option value={200} className="bg-slate-900 text-white">200 lines</option>
+            </select>
+          </div>
+
+          <div className="h-4 w-px bg-slate-800 hidden md:block"></div>
+
           {/* Sample Snippet Selector */}
           <div className="flex items-center gap-1.5">
             <BookOpen className="w-3.5 h-3.5 text-slate-400" />
             <select
               value={selectedSample}
               onChange={handleSampleChange}
-              className="bg-slate-900 border border-slate-700/80 rounded-md px-2.5 py-1 text-slate-200 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer"
+              className="bg-slate-900 border border-slate-700/80 rounded-md px-2.5 py-1 text-slate-200 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer max-w-[210px] truncate"
             >
               <option value="">-- Load Sample Test Case --</option>
-              <optgroup label="✅ Accepted: Python Code">
-                <option value="py-sqli-valid">🐍 Python: SQL Injection (Valid Syntax)</option>
-                <option value="py-syntax-err">🐍 Python: Syntax Error (Missing colon)</option>
+              <optgroup label="⚠️ Limit Exceeded Test">
+                <option value="py-limit-exceeded">⚠️ Python: 60 Lines (Exceeds 50 Limit - Halts)</option>
               </optgroup>
-              <optgroup label="✅ Accepted: Java Code">
+              <optgroup label="✅ Accepted: Valid Code">
+                <option value="py-sqli-valid">🐍 Python: SQL Injection (Valid Syntax)</option>
                 <option value="java-sqli-valid">☕ Java: SQL Injection Concatenation (Valid Syntax)</option>
-                <option value="java-syntax-err">☕ Java: Syntax Error (Missing semicolon)</option>
+              </optgroup>
+              <optgroup label="🚫 Rejected: Incorrect Code / Missing Items">
+                <option value="py-syntax-err">🐍 Python: Missing Colon & Paren (Rejected)</option>
+                <option value="java-syntax-err">☕ Java: Missing Semicolon & Brace (Rejected)</option>
               </optgroup>
               <optgroup label="🚫 Rejected: Unsupported Languages">
                 <option value="reject-javascript">🚫 JavaScript / Node (Rejected)</option>
@@ -174,26 +207,97 @@ export default function CodeEditor({
         </div>
       </div>
 
+      {/* Code Limit Exceeded Visual Alert Strip */}
+      {isLimitExceeded && (
+        <div className="flex items-center justify-between px-4 py-2 bg-rose-950/80 border-b border-rose-500/50 text-xs text-rose-200">
+          <div className="flex items-center gap-2">
+            <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>
+              <strong>Code Limit Exceeded:</strong> Code contains <strong>{lineCount}</strong> lines (Limit: <strong>{maxLines}</strong> lines).
+              Validator will detect this and <strong>stop validating at line {maxLines + 1}</strong>. Subsequent lines will not be validated.
+            </span>
+          </div>
+          <span className="shrink-0 px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono font-bold text-[11px] border border-rose-500/30">
+            +{exceededBy} lines over
+          </span>
+        </div>
+      )}
+
+      {/* Incorrect Code / Missing Item Visual Alert Strip */}
+      {errors.length > 0 && !isLimitExceeded && (
+        <div className={`flex items-center justify-between px-4 py-2 border-b text-xs ${
+          hasMissingItem ? 'bg-amber-950/80 border-amber-500/50 text-amber-200' : 'bg-rose-950/80 border-rose-500/50 text-rose-200'
+        }`}>
+          <div className="flex items-center gap-2">
+            {hasMissingItem ? (
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            ) : (
+              <AlertOctagon className="w-4 h-4 text-rose-400 shrink-0" />
+            )}
+            <span>
+              <strong>Code Rejected ({hasMissingItem ? 'Missing Item' : 'Incorrect Code'}):</strong>{' '}
+              Line {firstError?.line}: {firstError?.message}
+              {firstError?.missing_detail && ` — ${firstError.missing_detail}`}
+              {firstError?.hint && ` (${firstError.hint})`}
+            </span>
+          </div>
+          <span className={`shrink-0 px-2 py-0.5 rounded font-mono font-bold text-[11px] border ${
+            hasMissingItem ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+          }`}>
+            {hasMissingItem ? 'MISSING ITEM' : 'INCORRECT CODE'}
+          </span>
+        </div>
+      )}
+
       {/* Editor Body: Line numbers + Textarea */}
       <div className="relative flex font-mono text-sm leading-relaxed min-h-[360px] max-h-[540px] bg-slate-950 overflow-hidden">
         {/* Line Numbers Gutter */}
         <div className="select-none py-3 px-3 bg-slate-950 border-r border-slate-800/80 text-right text-slate-600 text-xs overflow-hidden shrink-0">
           {lines.map((_, i) => {
             const lineNum = i + 1;
-            const hasError = errorLineSet.has(lineNum);
+            const errObj = errorMap.get(lineNum);
+            const isMissing = Boolean(errObj && (errObj.is_missing_item || errObj.isMissingItem));
+            const isExceeded = maxLines && lineNum > maxLines;
+            const isHaltLine = maxLines && lineNum === maxLines + 1;
+
             return (
               <div
                 key={lineNum}
-                className={`h-6 flex items-center justify-end gap-1 px-1 rounded ${
-                  hasError
+                title={
+                  isHaltLine
+                    ? `Line limit (${maxLines} lines) exceeded here! Validator stops at this stage; rest of code is NOT validated.`
+                    : isExceeded
+                    ? `Line ${lineNum} exceeds the ${maxLines}-line limit (unvalidated).`
+                    : isMissing
+                    ? `Missing Item on line ${lineNum}: ${errObj.missing_item || errObj.missingItem || errObj.message}`
+                    : errObj
+                    ? `Syntax error on line ${lineNum}: ${errObj.message}`
+                    : undefined
+                }
+                className={`h-6 flex items-center justify-end gap-1 px-1 rounded transition-colors ${
+                  isHaltLine
+                    ? 'text-rose-300 font-bold bg-rose-600/30 border-t border-rose-500'
+                    : isExceeded
+                    ? 'text-rose-500/80 bg-rose-950/30'
+                    : isMissing
+                    ? 'text-amber-300 font-bold bg-amber-500/20'
+                    : errObj
                     ? 'text-rose-400 font-bold bg-rose-500/10'
                     : lineNum === cursorPos.line
                     ? 'text-slate-300'
                     : ''
                 }`}
               >
-                {hasError && <span className="text-[10px] text-rose-500">●</span>}
-                <span className="w-6">{lineNum}</span>
+                {isHaltLine ? (
+                  <span className="text-[10px] text-rose-400 font-extrabold" title="Validation Stop Point">⛔</span>
+                ) : isExceeded ? (
+                  <span className="text-[9px] text-rose-500/70">✕</span>
+                ) : isMissing ? (
+                  <span className="text-[10px] text-amber-400 font-bold" title={`Missing Item: ${errObj.missing_item || errObj.missingItem}`}>⚠️</span>
+                ) : errObj ? (
+                  <span className="text-[10px] text-rose-500">●</span>
+                ) : null}
+                <span className="w-6 font-mono">{lineNum}</span>
               </div>
             );
           })}
@@ -221,11 +325,16 @@ export default function CodeEditor({
           </span>
           <span className="text-slate-600">|</span>
           <span
-            className={`font-mono ${
-              lineCount > 2000 ? 'text-amber-400 font-semibold' : ''
+            className={`font-mono flex items-center gap-1 ${
+              isLimitExceeded
+                ? 'text-rose-400 font-bold'
+                : lineCount > maxLines * 0.85
+                ? 'text-amber-400 font-medium'
+                : 'text-slate-300'
             }`}
           >
-            {lineCount.toLocaleString()} / 2,000 lines
+            {lineCount.toLocaleString()} / {maxLines} lines
+            {isLimitExceeded && ` (⚠️ +${exceededBy} over limit — Stops at line ${maxLines + 1})`}
           </span>
           <span className="text-slate-600">|</span>
           <span
@@ -238,10 +347,10 @@ export default function CodeEditor({
         </div>
 
         <div className="flex items-center gap-3">
-          {errorLineSet.size > 0 && (
-            <span className="flex items-center gap-1 text-rose-400 font-medium">
+          {errorMap.size > 0 && (
+            <span className={`flex items-center gap-1 font-medium ${hasMissingItem ? 'text-amber-400' : 'text-rose-400'}`}>
               <AlertTriangle className="w-3.5 h-3.5" />
-              {errorLineSet.size} syntax {errorLineSet.size === 1 ? 'error' : 'errors'}
+              {errorMap.size} {errorMap.size === 1 ? 'issue' : 'issues'} detected ({hasMissingItem ? 'Missing Item' : 'Syntax Error'})
             </span>
           )}
           <span className="text-slate-500 uppercase tracking-wider font-semibold">

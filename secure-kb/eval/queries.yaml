@@ -1,0 +1,39 @@
+# Retrieval evaluation set. `expect` lists doc ids; a query is a HIT@k when ANY
+# expected document appears in the top-k results.
+- q: "How do I prevent SQL injection in Python database queries?"
+  language: python
+  expect: [custom-python-sql-injection, owasp-cs-sql-injection, owasp-cs-query-parameterization]
+- q: "Use PreparedStatement instead of string concatenation in Java"
+  language: java
+  expect: [custom-java-sql-injection, owasp-cs-sql-injection, owasp-cs-query-parameterization]
+- q: "How to escape output to prevent cross-site scripting in HTML templates"
+  expect: [custom-xss-output-encoding, owasp-cs-xss]
+- q: "Where should I store API keys and passwords instead of hardcoding them in source code?"
+  expect: [custom-hardcoded-secrets, owasp-cs-secrets-management]
+- q: "Which algorithm should I use to hash user passwords?"
+  expect: [custom-password-hashing, owasp-cs-password-storage]
+- q: "How do I protect state changing requests against CSRF?"
+  expect: [owasp-cs-csrf]
+- q: "Why is pickle.loads unsafe on untrusted data?"
+  language: python
+  expect: [custom-python-unsafe-deserialization, owasp-cs-deserialization]
+- q: "os.system with user input allows command injection, what is the safe way?"
+  language: python
+  expect: [custom-python-command-injection, owasp-cs-os-command-injection]
+- q: "Users can read other users' records by changing the id in the URL"
+  expect: [custom-access-control-checks, owasp-cs-idor, owasp-cs-authorization, owasp-top10-a01]
+- q: "Prevent ../ path traversal when handling a filename from the user"
+  expect: [custom-path-traversal, owasp-cs-file-upload, owasp-top10-a01]
+- q: "Disable external entities in the Java XML parser to stop XXE"
+  language: java
+  expect: [custom-java-xxe-deserialization, owasp-cs-xxe]
+- q: "How do I stop the server fetching attacker controlled URLs (SSRF)?"
+  expect: [owasp-cs-ssrf, owasp-top10-a10]
+- q: "What events should an application log for security monitoring?"
+  expect: [owasp-cs-logging, owasp-top10-a09]
+- q: "What is a god class and how do I refactor a long method?"
+  expect: [custom-code-smells-catalog]
+- q: "Which CWE id and severity does SQL injection map to?"
+  expect: [custom-cwe-owasp-severity-reference, owasp-top10-a03]
+- q: "How should I review code for security issues?"
+  expect: [owasp-cs-secure-code-review]

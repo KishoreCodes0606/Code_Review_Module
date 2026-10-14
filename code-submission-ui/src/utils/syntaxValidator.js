@@ -82,7 +82,7 @@ export function detectLanguage(code, filename = '') {
 /**
  * Validates Python source code syntax
  */
-export function validatePython(code) {
+export function validatePython(code, maxLines = 50) {
   const errors = [];
   const warnings = [];
 
@@ -95,6 +95,29 @@ export function validatePython(code) {
   }
 
   const lines = code.split('\n');
+
+  // Check 0: Fixed line limit gatekeeper
+  if (maxLines && lines.length > maxLines) {
+    const haltLine = maxLines + 1;
+    return {
+      valid: false,
+      lineLimitExceeded: true,
+      maxLines,
+      lineCount: lines.length,
+      stoppedAtLine: haltLine,
+      errors: [
+        {
+          line: haltLine,
+          col: 1,
+          message: `CodeLimitExceeded: Submission contains ${lines.length} lines, exceeding the allowed limit of ${maxLines} lines. Validator stopped at line ${haltLine}; remaining lines were not validated.`,
+          rule: 'code_line_limit_exceeded',
+          snippet: (lines[maxLines] || '').trim(),
+          hint: `Shorten your code to stay within ${maxLines} lines, or increase the line limit in the toolbar.`
+        }
+      ],
+      warnings: []
+    };
+  }
 
   // Check 1: Size limits (System Design specifies max 2000 lines, 200 KB)
   const sizeBytes = new Blob([code]).size;
@@ -183,6 +206,9 @@ export function validatePython(code) {
             message: `SyntaxError: unmatched '${ch}'`,
             rule: 'unmatched_closing_delimiter',
             snippet: line.trim(),
+            isMissingItem: false,
+            missingItem: null,
+            missingDetail: null,
             hint: `Found closing bracket '${ch}' without a matching opening bracket.`
           });
         } else {
@@ -195,6 +221,9 @@ export function validatePython(code) {
               message: `SyntaxError: closing parenthesis '${ch}' does not match opening '${top.char}' on line ${top.line}`,
               rule: 'mismatched_delimiter',
               snippet: line.trim(),
+              isMissingItem: false,
+              missingItem: null,
+              missingDetail: null,
               hint: `Expected '${expected}' to close '${top.char}' from line ${top.line}, col ${top.col}.`
             });
           }
@@ -212,6 +241,9 @@ export function validatePython(code) {
         message: "SyntaxError: unterminated string literal (detected at EOL)",
         rule: 'unterminated_string',
         snippet: line.trim(),
+        isMissingItem: true,
+        missingItem: "closing quote (')",
+        missingDetail: `Single-quote string literal on line ${lineNum} is missing closing quote.`,
         hint: "Ensure single quote string is closed with a matching single quote on the same line, or use triple quotes for multi-line strings."
       });
       inSingleQuote = false; // Reset to avoid cascade
@@ -223,6 +255,9 @@ export function validatePython(code) {
         message: "SyntaxError: unterminated string literal (detected at EOL)",
         rule: 'unterminated_string',
         snippet: line.trim(),
+        isMissingItem: true,
+        missingItem: 'closing quote (")',
+        missingDetail: `Double-quote string literal on line ${lineNum} is missing closing quote.`,
         hint: "Ensure double quote string is closed with a matching double quote on the same line, or use triple quotes for multi-line strings."
       });
       inDoubleQuote = false; // Reset
@@ -231,7 +266,7 @@ export function validatePython(code) {
     // Check 3: Python header lines must end with a colon ':'
     const stripped = line.split('#')[0].trimEnd();
     if (stripped.length > 0 && !inTripleDouble && !inTripleSingle) {
-      const headerRegex = /^\s*(def\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(.*?\)|class\s+[a-zA-Z_][a-zA-Z0-9_]*(\(.*?\))?|if\b.*|elif\b.*|else\s*|for\b.*|while\b.*|try\s*|except(\s+.*)?|finally\s*|with\b.*|async\s+def\b.*|async\s+for\b.*|async\s+with\b.*)$/;
+      const headerRegex = /^\s*(def\s+[a-zA-Z_][a-zA-Z0-9_]*(\s*\(.*?\))?|class\s+[a-zA-Z_][a-zA-Z0-9_]*(\(.*?\))?|if\b.*|elif\b.*|else\s*|for\b.*|while\b.*|try\s*|except(\s+.*)?|finally\s*|with\b.*|async\s+def\b.*|async\s+for\b.*|async\s+with\b.*)$/;
       if (headerRegex.test(stripped)) {
         if (!stripped.endsWith(':')) {
           // If ends with open paren or backslash, it could be multi-line
@@ -242,10 +277,25 @@ export function validatePython(code) {
               message: `SyntaxError: expected ':' at end of header statement`,
               rule: 'missing_colon',
               snippet: stripped.trim(),
+              isMissingItem: true,
+              missingItem: "':' (colon)",
+              missingDetail: `Missing ':' at end of statement '${stripped.trim()}' on line ${lineNum}.`,
               hint: `Statements like 'def', 'if', 'for', 'class', etc., must terminate with a colon ':'.`
             });
           }
         }
+      } else if (/[\+\-\*\/\=\,\<\>\&\|\^]\s*$/.test(stripped) && !stripped.endsWith('\\') && stack.length === 0) {
+        errors.push({
+          line: lineNum,
+          col: stripped.length,
+          message: "SyntaxError: invalid syntax (incomplete expression)",
+          rule: "incomplete_expression",
+          snippet: stripped.trim(),
+          isMissingItem: true,
+          missingItem: "operand / value expression",
+          missingDetail: `Incomplete expression ending with an operator on line ${lineNum}.`,
+          hint: "Complete the statement by providing the missing value or operand."
+        });
       }
     }
 
@@ -262,9 +312,29 @@ export function validatePython(code) {
           message: `SyntaxError: invalid syntax (use 'and' / 'or' instead of '&&' / '||')`,
           rule: 'invalid_boolean_operator',
           snippet: line.trim(),
+          isMissingItem: false,
+          missingItem: null,
+          missingDetail: null,
           hint: "Python uses 'and' and 'or' for logical operators, not '&&' or '||'."
         });
       }
+    }
+
+    // Stop validating if an error has been detected - validator halts at this stage itself
+    if (errors.length > 0) {
+      const hasMissing = errors.some(e => e.isMissingItem);
+      return {
+        valid: false,
+        rejectedCode: true,
+        hasMissingItem: hasMissing,
+        rejectionReason: hasMissing ? 'missing_item' : 'incorrect_code',
+        lineLimitExceeded: false,
+        maxLines,
+        lineCount: lines.length,
+        stoppedAtLine: errors[0].line,
+        errors: [errors[0]],
+        warnings
+      };
     }
   }
 
@@ -276,6 +346,9 @@ export function validatePython(code) {
       message: `SyntaxError: EOF while scanning triple-quoted string literal`,
       rule: 'unterminated_triple_quote',
       snippet: lines[lines.length - 1].trim(),
+      isMissingItem: true,
+      missingItem: `closing ${inTripleDouble ? '"""' : "'''"}`,
+      missingDetail: "Multi-line docstring/string was opened but never closed before end of file.",
       hint: `Add matching ${inTripleDouble ? '"""' : "'''"} to close the multi-line docstring or string.`
     });
   }
@@ -283,18 +356,30 @@ export function validatePython(code) {
   // Check unclosed brackets
   while (stack.length > 0) {
     const unclosed = stack.pop();
+    const exp = unclosed.char === '(' ? ')' : unclosed.char === '[' ? ']' : '}';
     errors.push({
       line: unclosed.line,
       col: unclosed.col,
-      message: `SyntaxError: '${unclosed.char}' was never closed`,
+      message: `SyntaxError: '${unclosed.char}' was never closed (missing '${exp}')`,
       rule: 'unclosed_delimiter',
       snippet: (lines[unclosed.line - 1] || '').trim(),
-      hint: `Missing closing bracket for '${unclosed.char}' opened on line ${unclosed.line}, column ${unclosed.col}.`
+      isMissingItem: true,
+      missingItem: `closing '${exp}'`,
+      missingDetail: `Missing closing '${exp}' for '${unclosed.char}' opened on line ${unclosed.line}, col ${unclosed.col}.`,
+      hint: `Add matching closing bracket '${exp}' to balance structure.`
     });
   }
 
+  const hasMissing = errors.some(e => e.isMissingItem);
   return {
     valid: errors.length === 0,
+    rejectedCode: errors.length > 0,
+    hasMissingItem: hasMissing,
+    rejectionReason: errors.length > 0 ? (hasMissing ? 'missing_item' : 'incorrect_code') : null,
+    lineLimitExceeded: false,
+    maxLines,
+    lineCount: lines.length,
+    stoppedAtLine: errors.length > 0 ? errors[0].line : null,
     errors,
     warnings
   };
@@ -303,7 +388,7 @@ export function validatePython(code) {
 /**
  * Validates Java source code syntax
  */
-export function validateJava(code) {
+export function validateJava(code, maxLines = 50) {
   const errors = [];
   const warnings = [];
 
@@ -316,6 +401,29 @@ export function validateJava(code) {
   }
 
   const lines = code.split('\n');
+
+  // Check 0: Fixed line limit gatekeeper
+  if (maxLines && lines.length > maxLines) {
+    const haltLine = maxLines + 1;
+    return {
+      valid: false,
+      lineLimitExceeded: true,
+      maxLines,
+      lineCount: lines.length,
+      stoppedAtLine: haltLine,
+      errors: [
+        {
+          line: haltLine,
+          col: 1,
+          message: `CodeLimitExceeded: Submission contains ${lines.length} lines, exceeding the allowed limit of ${maxLines} lines. Validator stopped at line ${haltLine}; remaining lines were not validated.`,
+          rule: 'code_line_limit_exceeded',
+          snippet: (lines[maxLines] || '').trim(),
+          hint: `Shorten your code to stay within ${maxLines} lines, or increase the line limit in the toolbar.`
+        }
+      ],
+      warnings: []
+    };
+  }
 
   // Check 1: Size limits
   const sizeBytes = new Blob([code]).size;
@@ -398,6 +506,9 @@ export function validateJava(code) {
             message: `SyntaxError: unmatched closing delimiter '${ch}'`,
             rule: 'unmatched_closing_delimiter',
             snippet: line.trim(),
+            isMissingItem: false,
+            missingItem: null,
+            missingDetail: null,
             hint: `Encountered closing '${ch}' without a matching opening delimiter.`
           });
         } else {
@@ -410,6 +521,9 @@ export function validateJava(code) {
               message: `SyntaxError: mismatched delimiter: found '${ch}', expected '${expected}' for '${top.char}' opened on line ${top.line}`,
               rule: 'mismatched_delimiter',
               snippet: line.trim(),
+              isMissingItem: false,
+              missingItem: null,
+              missingDetail: null,
               hint: `Replace '${ch}' with '${expected}' or verify nesting structure.`
             });
           }
@@ -427,6 +541,9 @@ export function validateJava(code) {
         message: 'SyntaxError: unclosed string literal',
         rule: 'unclosed_string_literal',
         snippet: line.trim(),
+        isMissingItem: true,
+        missingItem: 'closing quote (")',
+        missingDetail: `Unclosed string literal on line ${lineNum} — missing closing double quote.`,
         hint: 'Java string literals cannot span multiple lines without concatenation (+) or text blocks (""").'
       });
       inString = false;
@@ -438,6 +555,9 @@ export function validateJava(code) {
         message: 'SyntaxError: unclosed character literal',
         rule: 'unclosed_char_literal',
         snippet: line.trim(),
+        isMissingItem: true,
+        missingItem: "closing single quote (')",
+        missingDetail: `Unclosed character literal on line ${lineNum} — missing closing single quote.`,
         hint: "Character literal must be enclosed in single quotes, e.g. 'a'."
       });
       inChar = false;
@@ -446,8 +566,6 @@ export function validateJava(code) {
     // Check 3: Common semicolon check for Java statements
     const cleanedLine = line.replace(/\/\/.*$/, '').trim();
     if (!inBlockComment && cleanedLine.length > 0) {
-      // Check if statement should end with semicolon
-      const isHeader = /^(public|private|protected|static|final|abstract|class|interface|enum|if|else|for|while|do|switch|case|default|try|catch|finally|synchronized|@)\b/.test(cleanedLine);
       const endsWithValidTerm = /[;{}:,]$/.test(cleanedLine);
 
       // Check return, throw, package, import, variable assignment/call without semicolon
@@ -460,9 +578,29 @@ export function validateJava(code) {
           message: `SyntaxError: ';' expected`,
           rule: 'missing_semicolon',
           snippet: cleanedLine,
+          isMissingItem: true,
+          missingItem: "';' (semicolon)",
+          missingDetail: `Missing ';' at end of statement '${cleanedLine}' on line ${lineNum}.`,
           hint: "Java statements must be terminated with a semicolon ';'."
         });
       }
+    }
+
+    // Stop validating if an error has been detected - validator halts at this stage itself
+    if (errors.length > 0) {
+      const hasMissing = errors.some(e => e.isMissingItem);
+      return {
+        valid: false,
+        rejectedCode: true,
+        hasMissingItem: hasMissing,
+        rejectionReason: hasMissing ? 'missing_item' : 'incorrect_code',
+        lineLimitExceeded: false,
+        maxLines,
+        lineCount: lines.length,
+        stoppedAtLine: errors[0].line,
+        errors: [errors[0]],
+        warnings
+      };
     }
   }
 
@@ -473,19 +611,26 @@ export function validateJava(code) {
       message: 'SyntaxError: unclosed block comment (expected */)',
       rule: 'unclosed_comment',
       snippet: lines[lines.length - 1].trim(),
+      isMissingItem: true,
+      missingItem: "*/ (closing comment)",
+      missingDetail: "Block comment was opened with '/*' but never closed with '*/'.",
       hint: 'Add */ to close the multi-line comment.'
     });
   }
 
   while (stack.length > 0) {
     const unclosed = stack.pop();
+    const exp = unclosed.char === '{' ? '}' : unclosed.char === '(' ? ')' : ']';
     errors.push({
       line: unclosed.line,
       col: unclosed.col,
       message: `SyntaxError: reached end of file while parsing, '${unclosed.char}' opened on line ${unclosed.line} was never closed`,
       rule: 'unclosed_delimiter',
       snippet: (lines[unclosed.line - 1] || '').trim(),
-      hint: `Add matching '${unclosed.char === '{' ? '}' : unclosed.char === '(' ? ')' : ']'}' to balance structure.`
+      isMissingItem: true,
+      missingItem: `closing '${exp}'`,
+      missingDetail: `Missing closing '${exp}' to balance opening '${unclosed.char}' on line ${unclosed.line}.`,
+      hint: `Add matching '${exp}' to balance structure.`
     });
   }
 
@@ -494,8 +639,16 @@ export function validateJava(code) {
     warnings.push("Notice: No class, interface, or record definition detected. Standard Java files require an enclosing class/type.");
   }
 
+  const hasMissing = errors.some(e => e.isMissingItem);
   return {
     valid: errors.length === 0,
+    rejectedCode: errors.length > 0,
+    hasMissingItem: hasMissing,
+    rejectionReason: errors.length > 0 ? (hasMissing ? 'missing_item' : 'incorrect_code') : null,
+    lineLimitExceeded: false,
+    maxLines,
+    lineCount: lines.length,
+    stoppedAtLine: errors.length > 0 ? errors[0].line : null,
     errors,
     warnings
   };

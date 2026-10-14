@@ -1,0 +1,69 @@
+# Registry of every document that goes into the knowledge base.
+# Each entry becomes one "Document"; metadata is copied onto every chunk so the
+# retriever can filter (language, OWASP category, doc type) and cite sources.
+#
+# language: python | java | general
+# owasp_category: A01..A10 (OWASP Top 10 2021 numbering - change here if you
+#                 move to a newer edition; no code change needed)
+
+groups:
+  - name: owasp-cheatsheets
+    doc_type: cheatsheet
+    raw_base: https://raw.githubusercontent.com/OWASP/CheatSheetSeries/master/cheatsheets/
+    page_base: https://cheatsheetseries.owasp.org/cheatsheets/
+    page_ext: .html
+    license: "CC BY-SA 4.0 (OWASP Cheat Sheet Series)"
+    items:
+      - {id: owasp-cs-sql-injection, file: SQL_Injection_Prevention_Cheat_Sheet.md, owasp: A03, cwe: [CWE-89]}
+      - {id: owasp-cs-query-parameterization, file: Query_Parameterization_Cheat_Sheet.md, owasp: A03, cwe: [CWE-89]}
+      - {id: owasp-cs-injection-prevention, file: Injection_Prevention_Cheat_Sheet.md, owasp: A03, cwe: [CWE-74]}
+      - {id: owasp-cs-xss, file: Cross_Site_Scripting_Prevention_Cheat_Sheet.md, owasp: A03, cwe: [CWE-79]}
+      - {id: owasp-cs-os-command-injection, file: OS_Command_Injection_Defense_Cheat_Sheet.md, owasp: A03, cwe: [CWE-78]}
+      - {id: owasp-cs-ldap-injection, file: LDAP_Injection_Prevention_Cheat_Sheet.md, owasp: A03, cwe: [CWE-90]}
+      - {id: owasp-cs-input-validation, file: Input_Validation_Cheat_Sheet.md, owasp: A03, cwe: [CWE-20]}
+      - {id: owasp-cs-csrf, file: Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.md, owasp: A01, cwe: [CWE-352]}
+      - {id: owasp-cs-authorization, file: Authorization_Cheat_Sheet.md, owasp: A01, cwe: [CWE-285]}
+      - {id: owasp-cs-idor, file: Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.md, owasp: A01, cwe: [CWE-639]}
+      - {id: owasp-cs-mass-assignment, file: Mass_Assignment_Cheat_Sheet.md, owasp: A01, cwe: [CWE-915]}
+      - {id: owasp-cs-file-upload, file: File_Upload_Cheat_Sheet.md, owasp: A04, cwe: [CWE-434, CWE-22]}
+      - {id: owasp-cs-password-storage, file: Password_Storage_Cheat_Sheet.md, owasp: A02, cwe: [CWE-916, CWE-327]}
+      - {id: owasp-cs-secrets-management, file: Secrets_Management_Cheat_Sheet.md, owasp: A02, cwe: [CWE-798]}
+      - {id: owasp-cs-cryptographic-storage, file: Cryptographic_Storage_Cheat_Sheet.md, owasp: A02, cwe: [CWE-327, CWE-326]}
+      - {id: owasp-cs-key-management, file: Key_Management_Cheat_Sheet.md, owasp: A02, cwe: [CWE-321]}
+      - {id: owasp-cs-tls, file: Transport_Layer_Security_Cheat_Sheet.md, owasp: A02, cwe: [CWE-319]}
+      - {id: owasp-cs-authentication, file: Authentication_Cheat_Sheet.md, owasp: A07, cwe: [CWE-287]}
+      - {id: owasp-cs-session-management, file: Session_Management_Cheat_Sheet.md, owasp: A07, cwe: [CWE-384]}
+      - {id: owasp-cs-deserialization, file: Deserialization_Cheat_Sheet.md, owasp: A08, cwe: [CWE-502]}
+      - {id: owasp-cs-ssrf, file: Server_Side_Request_Forgery_Prevention_Cheat_Sheet.md, owasp: A10, cwe: [CWE-918]}
+      - {id: owasp-cs-xxe, file: XML_External_Entity_Prevention_Cheat_Sheet.md, owasp: A05, cwe: [CWE-611]}
+      - {id: owasp-cs-logging, file: Logging_Cheat_Sheet.md, owasp: A09, cwe: [CWE-778, CWE-532]}
+      - {id: owasp-cs-error-handling, file: Error_Handling_Cheat_Sheet.md, owasp: A05, cwe: [CWE-209]}
+      - {id: owasp-cs-http-headers, file: HTTP_Headers_Cheat_Sheet.md, owasp: A05, cwe: [CWE-693]}
+      - {id: owasp-cs-csp, file: Content_Security_Policy_Cheat_Sheet.md, owasp: A05, cwe: [CWE-79]}
+      - {id: owasp-cs-vulnerable-dependencies, file: Vulnerable_Dependency_Management_Cheat_Sheet.md, owasp: A06, cwe: [CWE-1104]}
+      - {id: owasp-cs-supply-chain, file: Software_Supply_Chain_Security_Cheat_Sheet.md, owasp: A06, cwe: [CWE-1357]}
+      - {id: owasp-cs-secure-product-design, file: Secure_Product_Design_Cheat_Sheet.md, owasp: A04, cwe: []}
+      - {id: owasp-cs-threat-modeling, file: Threat_Modeling_Cheat_Sheet.md, owasp: A04, cwe: []}
+      - {id: owasp-cs-secure-code-review, file: Secure_Code_Review_Cheat_Sheet.md, owasp: general, cwe: []}
+      - {id: owasp-cs-rest-security, file: REST_Security_Cheat_Sheet.md, owasp: general, cwe: []}
+      - {id: owasp-cs-unvalidated-redirects, file: Unvalidated_Redirects_and_Forwards_Cheat_Sheet.md, owasp: A01, cwe: [CWE-601]}
+      - {id: owasp-cs-java-security, file: Java_Security_Cheat_Sheet.md, owasp: general, cwe: [], language: java}
+      - {id: owasp-cs-django-security, file: Django_Security_Cheat_Sheet.md, owasp: general, cwe: [], language: python}
+
+  - name: owasp-top10-2021
+    doc_type: top10
+    raw_base: https://raw.githubusercontent.com/OWASP/Top10/master/2021/docs/en/
+    page_base: https://owasp.org/Top10/
+    page_ext: /
+    license: "CC BY-SA 4.0 (OWASP Top 10) - verify at owasp.org"
+    items:
+      - {id: owasp-top10-a01, file: A01_2021-Broken_Access_Control.md, page: A01_2021-Broken_Access_Control, owasp: A01, cwe: [CWE-284, CWE-639, CWE-22]}
+      - {id: owasp-top10-a02, file: A02_2021-Cryptographic_Failures.md, page: A02_2021-Cryptographic_Failures, owasp: A02, cwe: [CWE-327, CWE-798]}
+      - {id: owasp-top10-a03, file: A03_2021-Injection.md, page: A03_2021-Injection, owasp: A03, cwe: [CWE-89, CWE-79, CWE-78]}
+      - {id: owasp-top10-a04, file: A04_2021-Insecure_Design.md, page: A04_2021-Insecure_Design, owasp: A04, cwe: [CWE-840]}
+      - {id: owasp-top10-a05, file: A05_2021-Security_Misconfiguration.md, page: A05_2021-Security_Misconfiguration, owasp: A05, cwe: [CWE-16, CWE-611]}
+      - {id: owasp-top10-a06, file: A06_2021-Vulnerable_and_Outdated_Components.md, page: A06_2021-Vulnerable_and_Outdated_Components, owasp: A06, cwe: [CWE-1104]}
+      - {id: owasp-top10-a07, file: A07_2021-Identification_and_Authentication_Failures.md, page: A07_2021-Identification_and_Authentication_Failures, owasp: A07, cwe: [CWE-287, CWE-384]}
+      - {id: owasp-top10-a08, file: A08_2021-Software_and_Data_Integrity_Failures.md, page: A08_2021-Software_and_Data_Integrity_Failures, owasp: A08, cwe: [CWE-502]}
+      - {id: owasp-top10-a09, file: A09_2021-Security_Logging_and_Monitoring_Failures.md, page: A09_2021-Security_Logging_and_Monitoring_Failures, owasp: A09, cwe: [CWE-778]}
+      - {id: owasp-top10-a10, file: "A10_2021-Server-Side_Request_Forgery_(SSRF).md", page: "A10_2021-Server-Side_Request_Forgery_(SSRF)", owasp: A10, cwe: [CWE-918]}

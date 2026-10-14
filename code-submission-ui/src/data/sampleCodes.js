@@ -150,5 +150,82 @@ int main(int argc, char* argv[]) {
 </body>
 </html>
 `
+  },
+  {
+    id: 'py-limit-exceeded',
+    name: '⚠️ Python: Line Limit Exceeded (60 Lines - Halts Validation at Line 51)',
+    language: 'python',
+    isAcceptedLanguage: true,
+    filename: 'large_service.py',
+    description: 'Python script with 60 lines. Demonstrates immediate detection when exceeding the 50-line limit, halting validation at line 51.',
+    code: `# Python Service: Demonstrates Code Line Limit Exceeded
+# The default limit is set to 50 lines.
+# This code has 60 lines. The validator will detect the limit breach,
+# halt immediately at line 51, and refuse to validate remaining code.
+
+import os
+import sys
+import logging
+
+logger = logging.getLogger("service")
+
+def step_01():
+    return "Executing Step 01"
+
+def step_02():
+    return "Executing Step 02"
+
+def step_03():
+    return "Executing Step 03"
+
+def step_04():
+    return "Executing Step 04"
+
+def step_05():
+    return "Executing Step 05"
+
+def step_06():
+    return "Executing Step 06"
+
+def step_07():
+    return "Executing Step 07"
+
+def step_08():
+    return "Executing Step 08"
+
+def step_09():
+    return "Executing Step 09"
+
+def step_10():
+    return "Executing Step 10"
+
+def step_11():
+    return "Executing Step 11"
+
+def step_12():
+    return "Executing Step 12"
+
+def step_13():
+    return "Executing Step 13"
+
+def step_14():
+    return "Executing Step 14"
+
+# LINE 50: This is line 50 (last allowed line under 50-line limit)
+def final_allowed_step():
+    return "Within limit"
+
+# ----------------- LIMIT BREACH POINT (LINE 51) -----------------
+# The validator stops right here at line 51!
+# Lines below are NOT validated even if they contain errors!
+def excess_step_52():
+    return "This line should never be validated"
+
+def excess_step_55():
+    return "Validator halted at line 51"
+
+def excess_step_58():
+    return "Unvalidated line"
+`
   }
 ];

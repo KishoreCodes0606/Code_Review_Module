@@ -27,20 +27,12 @@ export default function App() {
   // Language selection mode ('auto', 'python', 'java')
   const [languageMode, setLanguageMode] = useState('auto');
 
+  // Configurable fixed line limit for code pasting/submission (default: 50 lines)
+  const [maxLines, setMaxLines] = useState(50);
+
   // Dynamic language classification & gatekeeper
   const classification = useMemo(() => {
-    const rawResult = classifyLanguage(code, uploadedFile?.name);
-    // If user explicitly picked Python or Java, reflect that as target, but still verify if code violates it
-    if (languageMode !== 'auto') {
-      const isTargetMatch = rawResult.language === languageMode || rawResult.language === 'unknown';
-      return {
-        ...rawResult,
-        isAcceptable: rawResult.isAcceptable || isTargetMatch,
-        language: languageMode,
-        languageName: languageMode === 'python' ? 'Python' : 'Java'
-      };
-    }
-    return rawResult;
+    return classifyLanguage(code, uploadedFile?.name, languageMode);
   }, [code, uploadedFile, languageMode]);
 
   // Validation & metrics state
@@ -107,6 +99,9 @@ export default function App() {
     if (!code.trim()) {
       setValidationResult({
         valid: false,
+        rejectedCode: true,
+        hasMissingItem: true,
+        rejectionReason: 'empty_input',
         errors: [
           {
             line: 1,
@@ -114,6 +109,9 @@ export default function App() {
             message: 'SyntaxError: Empty code submission',
             rule: 'empty_code',
             snippet: '',
+            isMissingItem: true,
+            missingItem: 'code content',
+            missingDetail: 'Please paste code or load a sample test case first.',
             hint: 'Please paste code or load a sample test case first.'
           }
         ],
@@ -130,6 +128,9 @@ export default function App() {
       setValidationResult({
         valid: false,
         rejectedLanguage: true,
+        rejectedCode: true,
+        hasMissingItem: false,
+        rejectionReason: 'unsupported_language',
         errors: [
           {
             line: 1,
@@ -137,6 +138,9 @@ export default function App() {
             message: `Code rejected: Unsupported language (${classification.languageName}). This module accepts only Python and Java.`,
             rule: 'unsupported_language',
             snippet: code.split('\n')[0] || '',
+            isMissingItem: false,
+            missingItem: null,
+            missingDetail: null,
             hint: 'Replace code with Python (.py) or Java (.java) source.'
           }
         ],
@@ -153,24 +157,32 @@ export default function App() {
       const resp = await fetch('http://localhost:8000/api/submissions/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, language: currentLanguage }),
+        body: JSON.stringify({ code, language: currentLanguage, max_lines: maxLines }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
 
-      if (resp.ok) {
+      if (resp.ok || resp.status === 422) {
         const data = await resp.json();
+        const hasMissing = Boolean(data.has_missing_item || (data.errors && data.errors.some(e => e.is_missing_item || e.isMissingItem)));
         result = {
           valid: data.valid,
+          rejectedCode: Boolean(data.rejected_code || !data.valid),
+          rejectionReason: data.rejection_reason || (hasMissing ? 'missing_item' : 'incorrect_code'),
+          hasMissingItem: hasMissing,
+          lineLimitExceeded: Boolean(data.line_limit_exceeded),
+          maxLines: data.max_lines || maxLines,
+          lineCount: data.line_count || code.split('\n').length,
+          stoppedAtLine: data.stopped_at_line,
           errors: data.errors || [],
-          warnings: []
+          warnings: data.warnings || []
         };
       } else {
-        result = currentLanguage === 'python' ? validatePython(code) : validateJava(code);
+        result = currentLanguage === 'python' ? validatePython(code, maxLines) : validateJava(code, maxLines);
       }
     } catch {
       // Backend not running or offline: high-fidelity client-side parser
-      result = currentLanguage === 'python' ? validatePython(code) : validateJava(code);
+      result = currentLanguage === 'python' ? validatePython(code, maxLines) : validateJava(code, maxLines);
     }
 
     setValidationResult(result);
@@ -186,12 +198,22 @@ export default function App() {
       code: code,
       code_hash: hash,
       line_count: code.split('\n').length,
+      max_lines: maxLines,
+      line_limit_exceeded: Boolean(result.lineLimitExceeded),
+      stopped_at_line: result.stoppedAtLine || null,
       size_bytes: new Blob([code]).size,
       syntax_valid: result.valid,
+      rejected_code: Boolean(result.rejectedCode),
+      rejection_reason: result.rejectionReason,
+      has_missing_item: Boolean(result.hasMissingItem),
       syntax_errors: result.errors.map((e) => ({
         line: e.line,
         col: e.col,
-        message: e.message
+        message: e.message,
+        is_missing_item: Boolean(e.is_missing_item || e.isMissingItem),
+        missing_item: e.missing_item || e.missingItem || null,
+        missing_detail: e.missing_detail || e.missingDetail || null,
+        hint: e.hint || null
       })),
       created_at: new Date().toISOString()
     };
@@ -356,6 +378,8 @@ export default function App() {
               errors={validationResult?.errors || []}
               isValidating={isValidating}
               metrics={codeMetrics}
+              maxLines={maxLines}
+              onChangeMaxLines={setMaxLines}
             />
           </div>
 
