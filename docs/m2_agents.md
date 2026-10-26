@@ -9,7 +9,7 @@ pipeline; Bandit and PMD analyze source text themselves).
 
 | Method | Path | Notes |
 |---|---|---|
-| POST | `/api/analysis` | `{code, language, filename?}` → run summary. Syntax-invalid or non-Python/Java submissions → `422` with `{"error": "syntax_error"}` / `{"error": "unsupported_language"}`; over `512 KB` → `413`; invalid JSON / method mismatches behave exactly like M1. |
+| POST | `/api/analysis` | `{code, language, filename?}` → run summary. Syntax-invalid or non-Python/Java submissions → `422` with `{"error": "syntax_error"}` / `{"error": "unsupported_language"}`; over 200 KB or 2000 lines → `413`; invalid JSON / method mismatches behave exactly like M1. |
 | GET | `/api/analysis/<run_id>` | Re-fetch the summary of a stored run. |
 | GET | `/api/analysis/<run_id>/findings` | Findings list; deduplicated, sorted security-first then severity. Optional `?category=security\|quality`, `?severity=critical`. Unknown id → `404`. |
 

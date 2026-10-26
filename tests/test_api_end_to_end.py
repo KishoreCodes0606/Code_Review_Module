@@ -133,6 +133,16 @@ def test_m2_analysis_rejects_non_python_java(server_url):
     assert err.value.code == 422
 
 
+def test_m2_analysis_rejects_oversized_payload(server_url):
+    big = "x = 1\n" + ("# padding line\n" * 15000)  # > 200 KB
+    with pytest.raises(urllib.error.HTTPError) as err:
+        post_json(server_url, "/api/analysis",
+                  {"code": big, "language": "python"})
+    assert err.value.code == 413
+    payload = json.loads(err.value.read().decode())
+    assert payload["error"] == "payload_too_large"
+
+
 def test_m2_unknown_run_is_404(server_url):
     with pytest.raises(urllib.error.HTTPError) as err:
         get_json(server_url, "/api/analysis/run-does-not-exist")
