@@ -1,0 +1,8 @@
+# M2 static-analysis pipeline dependencies
+# Install with: python -m pip install -r requirements.txt
+# (secure-kb has its own pinned requirements; the React UI uses package.json)
+radon>=6.0.0
+pydantic>=2.0.0
+pytest>=8.0.0
+bandit>=1.7.0
+javalang>=0.13.0

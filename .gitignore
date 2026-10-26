@@ -10,6 +10,9 @@ env/
 node_modules/
 dist/
 
+# M2 tooling (PMD is download-on-demand, never committed)
+tools/pmd/
+
 # Operating system & IDE files
 .DS_Store
 Thumbs.db

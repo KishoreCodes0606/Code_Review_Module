@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Curated PMD ruleset for the M2 Java quality pass. All rule names verified
+     against pmd-java-7.9.0.jar's category XMLs (PMD 7 names; several PMD 6
+     names such as LongMethod/ExcessiveClassLength/UnusedImports/TooManyParams
+     no longer exist and were replaced). -->
+<ruleset name="M2 Java Quality"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0">
+    <description>Quality + design + selected security rules for Python/Java code review (PMD 7 categories)</description>
+
+    <!-- design -->
+    <rule ref="category/java/design.xml/CyclomaticComplexity"/>
+    <rule ref="category/java/design.xml/CognitiveComplexity"/>
+    <rule ref="category/java/design.xml/NPathComplexity"/>
+    <rule ref="category/java/design.xml/AvoidDeeplyNestedIfStmts"/>
+    <rule ref="category/java/design.xml/ExcessiveParameterList"/>
+    <rule ref="category/java/design.xml/TooManyMethods"/>
+    <rule ref="category/java/design.xml/GodClass"/>
+    <rule ref="category/java/design.xml/ExcessivePublicCount"/>
+    <rule ref="category/java/design.xml/TooManyFields"/>
+    <rule ref="category/java/design.xml/CollapsibleIfStatements"/>
+
+    <!-- bestpractices -->
+    <rule ref="category/java/bestpractices.xml/UnusedLocalVariable"/>
+    <rule ref="category/java/bestpractices.xml/UnusedPrivateField"/>
+    <rule ref="category/java/bestpractices.xml/UnusedPrivateMethod"/>
+    <rule ref="category/java/bestpractices.xml/UnusedFormalParameter"/>
+    <rule ref="category/java/bestpractices.xml/UnusedAssignment"/>
+    <rule ref="category/java/bestpractices.xml/OneDeclarationPerLine"/>
+    <rule ref="category/java/bestpractices.xml/SystemPrintln"/>
+
+    <!-- errorprone -->
+    <rule ref="category/java/errorprone.xml/EmptyCatchBlock"/>
+    <rule ref="category/java/errorprone.xml/AvoidBranchingStatementAsLastInLoop"/>
+    <rule ref="category/java/errorprone.xml/AssignmentInOperand"/>
+    <rule ref="category/java/errorprone.xml/BrokenNullCheck"/>
+    <rule ref="category/java/errorprone.xml/CompareObjectsWithEquals"/>
+
+    <!-- codestyle -->
+    <rule ref="category/java/codestyle.xml/UnnecessaryFullyQualifiedName"/>
+    <rule ref="category/java/codestyle.xml/ExtendsObject"/>
+
+    <!-- security -->
+    <rule ref="category/java/security.xml/HardCodedCryptoKey"/>
+    <rule ref="category/java/security.xml/InsecureCryptoIv"/>
+</ruleset>
