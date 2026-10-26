@@ -17,6 +17,16 @@ from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import re
 
+# M2 analysis pipeline (additive; import failure degrades gracefully so the
+# M1-only server can still run without analysis deps present)
+try:
+    from orchestrator import pipeline as orchestrator
+    ORCHESTRATOR_AVAILABLE = True
+except Exception as _orch_exc:  # pragma: no cover
+    orchestrator = None
+    ORCHESTRATOR_AVAILABLE = False
+    _ORCHESTRATOR_ERROR = str(_orch_exc)
+
 PORT = 8000
 
 def classify_language(code: str, filename: str = "", target_lang: str = "auto") -> dict:
@@ -393,6 +403,69 @@ def validate_java_syntax(code: str) -> dict:
     }
 
 class SubmissionHandler(BaseHTTPRequestHandler):
+    # ---- M2 additive routes (no change to any M1 behavior) ----
+
+    def _m2_handle_analysis_post(self, body):
+        """POST /api/analysis - run the multi-agent pipeline (M2 additive)."""
+        code = body.get("code", "")
+        language = (body.get("language") or "auto").lower()
+        filename = body.get("filename", "")
+
+        # Same gatekeeper as M1
+        lang_info = classify_language(code, filename, target_lang=language)
+        if not lang_info["accepted"]:
+            self.send_response(422)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "error": "unsupported_language",
+                "message": lang_info.get("reason", "Only Python and Java are accepted."),
+            }).encode("utf-8"))
+            return
+        target_lang = lang_info["language"]
+
+        # Same syntax gate as M1: no analysis run on rejected code
+        if target_lang == "python":
+            val_result = validate_python_ast(code)
+        else:
+            val_result = validate_java_syntax(code)
+        if not val_result["valid"]:
+            self.send_response(422)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "error": "syntax_error",
+                "message": "Code must pass syntax validation before analysis.",
+                "syntax_errors": val_result["errors"],
+            }).encode("utf-8"))
+            return
+
+        try:
+            run_id = orchestrator.analyze_code(code, target_lang, filename)
+        except Exception as exc:
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps({
+                "error": "pipeline_failure", "message": str(exc)}).encode("utf-8"))
+            return
+
+        state = orchestrator.get_run(run_id)
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(json.dumps(orchestrator.run_summary(state)).encode("utf-8"))
+
+    def _m2_send_analysis_not_found(self):
+        self.send_response(404)
+        self.send_header("Content-Type", "application/json")
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(json.dumps({"error": "run_not_found"}).encode("utf-8"))
     def _send_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -404,6 +477,43 @@ class SubmissionHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # ---- M2 additive GET routes (M1 /api/health unchanged below) ----
+        if self.path.startswith("/api/analysis/"):
+            from urllib.parse import urlsplit, parse_qs
+            parts = urlsplit(self.path)
+            segments = [s for s in parts.path.split("/") if s]
+            run_id = segments[2] if len(segments) > 2 else ""
+            subsection = segments[3] if len(segments) > 3 else ""
+            state = orchestrator.get_run(run_id) if run_id else None
+            if state is None:
+                self._m2_send_analysis_not_found()
+                return
+            if subsection == "findings":
+                params = parse_qs(parts.query)
+                category = (params.get("category") or [None])[0]
+                severity = (params.get("severity") or [None])[0]
+                findings_payload = [f.to_dict() for f in state.merged_findings]
+                if category:
+                    findings_payload = [f for f in findings_payload if f["category"] == category]
+                if severity:
+                    findings_payload = [f for f in findings_payload if f["severity"] == severity]
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "run_id": state.run_id,
+                    "count": len(findings_payload),
+                    "findings": findings_payload,
+                }).encode("utf-8"))
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps(orchestrator.run_summary(state)).encode("utf-8"))
+            return
+
         if self.path == "/api/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -433,6 +543,35 @@ class SubmissionHandler(BaseHTTPRequestHandler):
             self.wfile.write(json.dumps({"error": "Invalid JSON body"}).encode("utf-8"))
             return
 
+        # ---- M2 additive route (runs before M1 logic; M1 paths unchanged) ----
+        if self.path == "/api/analysis":
+            if not ORCHESTRATOR_AVAILABLE:
+                self.send_response(503)
+                self.send_header("Content-Type", "application/json")
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "analysis_unavailable",
+                    "message": "Analysis pipeline not loaded: " + _ORCHESTRATOR_ERROR[:200],
+                }).encode("utf-8"))
+                return
+            # size guards consistent with the M1 line/KB submission limits
+            code_size = len(body.get("code", "").encode("utf-8"))
+            line_count = len(body.get("code", "").split("\n"))
+            if code_size > 200 * 1024 or line_count > 2000:
+                self.send_response(413)
+                self.send_header("Content-Type", "application/json")
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(json.dumps({
+                    "error": "payload_too_large",
+                    "message": "Submission exceeds the 200 KB / 2000-line analysis limit.",
+                }).encode("utf-8"))
+                return
+            self._m2_handle_analysis_post(body)
+            return
+        # ---------------- end M2 additive route ----------------
+
         code = body.get("code", "")
         language = (body.get("language") or "auto").lower()
         source_type = body.get("source_type", "paste")
@@ -446,6 +585,7 @@ class SubmissionHandler(BaseHTTPRequestHandler):
                 max_lines = 50
         else:
             max_lines = 50
+
 
         # 1. Gatekeeper check
         lang_info = classify_language(code, filename, target_lang=language)
