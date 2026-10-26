@@ -53,8 +53,13 @@ def analyze_code(code: str, language: str, filename: str) -> str:
             state.metrics.update(q_metrics)
         except Exception as e:  # timeout or crash: explicit failure record
             from analysis.findings import AgentRunResult
-            q_result = AgentRunResult(
-                agent="code_analysis_agent", status="failed", error=str(e))
+            if isinstance(e, TimeoutError):  # future.result() deadline hit
+                q_result = AgentRunResult(
+                    agent="code_analysis_agent", status="timeout",
+                    error=f"agent timed out after {AGENT_TIMEOUT_SECONDS:g}s")
+            else:
+                q_result = AgentRunResult(
+                    agent="code_analysis_agent", status="failed", error=str(e))
         state.agent_results.append(q_result)
 
         try:
@@ -63,8 +68,13 @@ def analyze_code(code: str, language: str, filename: str) -> str:
             state.metrics.update({"security_" + k: v for k, v in s_extras.items()})
         except Exception as e:
             from analysis.findings import AgentRunResult
-            s_result = AgentRunResult(
-                agent="security_agent", status="failed", error=str(e))
+            if isinstance(e, TimeoutError):  # future.result() deadline hit
+                s_result = AgentRunResult(
+                    agent="security_agent", status="timeout",
+                    error=f"agent timed out after {AGENT_TIMEOUT_SECONDS:g}s")
+            else:
+                s_result = AgentRunResult(
+                    agent="security_agent", status="failed", error=str(e))
         state.agent_results.append(s_result)
 
     # FAN-IN: merge + dedup + severity consolidation ------------------------
