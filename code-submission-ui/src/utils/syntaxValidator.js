@@ -82,7 +82,7 @@ export function detectLanguage(code, filename = '') {
 /**
  * Validates Python source code syntax
  */
-export function validatePython(code, maxLines = 50) {
+export function validatePython(code) {
   const errors = [];
   const warnings = [];
 
@@ -95,29 +95,6 @@ export function validatePython(code, maxLines = 50) {
   }
 
   const lines = code.split('\n');
-
-  // Check 0: Fixed line limit gatekeeper
-  if (maxLines && lines.length > maxLines) {
-    const haltLine = maxLines + 1;
-    return {
-      valid: false,
-      lineLimitExceeded: true,
-      maxLines,
-      lineCount: lines.length,
-      stoppedAtLine: haltLine,
-      errors: [
-        {
-          line: haltLine,
-          col: 1,
-          message: `CodeLimitExceeded: Submission contains ${lines.length} lines, exceeding the allowed limit of ${maxLines} lines. Validator stopped at line ${haltLine}; remaining lines were not validated.`,
-          rule: 'code_line_limit_exceeded',
-          snippet: (lines[maxLines] || '').trim(),
-          hint: `Shorten your code to stay within ${maxLines} lines, or increase the line limit in the toolbar.`
-        }
-      ],
-      warnings: []
-    };
-  }
 
   // Check 1: Size limits (System Design specifies max 2000 lines, 200 KB)
   const sizeBytes = new Blob([code]).size;
@@ -328,10 +305,7 @@ export function validatePython(code, maxLines = 50) {
         rejectedCode: true,
         hasMissingItem: hasMissing,
         rejectionReason: hasMissing ? 'missing_item' : 'incorrect_code',
-        lineLimitExceeded: false,
-        maxLines,
         lineCount: lines.length,
-        stoppedAtLine: errors[0].line,
         errors: [errors[0]],
         warnings
       };
@@ -376,10 +350,7 @@ export function validatePython(code, maxLines = 50) {
     rejectedCode: errors.length > 0,
     hasMissingItem: hasMissing,
     rejectionReason: errors.length > 0 ? (hasMissing ? 'missing_item' : 'incorrect_code') : null,
-    lineLimitExceeded: false,
-    maxLines,
     lineCount: lines.length,
-    stoppedAtLine: errors.length > 0 ? errors[0].line : null,
     errors,
     warnings
   };
@@ -388,7 +359,7 @@ export function validatePython(code, maxLines = 50) {
 /**
  * Validates Java source code syntax
  */
-export function validateJava(code, maxLines = 50) {
+export function validateJava(code) {
   const errors = [];
   const warnings = [];
 
@@ -401,29 +372,6 @@ export function validateJava(code, maxLines = 50) {
   }
 
   const lines = code.split('\n');
-
-  // Check 0: Fixed line limit gatekeeper
-  if (maxLines && lines.length > maxLines) {
-    const haltLine = maxLines + 1;
-    return {
-      valid: false,
-      lineLimitExceeded: true,
-      maxLines,
-      lineCount: lines.length,
-      stoppedAtLine: haltLine,
-      errors: [
-        {
-          line: haltLine,
-          col: 1,
-          message: `CodeLimitExceeded: Submission contains ${lines.length} lines, exceeding the allowed limit of ${maxLines} lines. Validator stopped at line ${haltLine}; remaining lines were not validated.`,
-          rule: 'code_line_limit_exceeded',
-          snippet: (lines[maxLines] || '').trim(),
-          hint: `Shorten your code to stay within ${maxLines} lines, or increase the line limit in the toolbar.`
-        }
-      ],
-      warnings: []
-    };
-  }
 
   // Check 1: Size limits
   const sizeBytes = new Blob([code]).size;
@@ -594,10 +542,7 @@ export function validateJava(code, maxLines = 50) {
         rejectedCode: true,
         hasMissingItem: hasMissing,
         rejectionReason: hasMissing ? 'missing_item' : 'incorrect_code',
-        lineLimitExceeded: false,
-        maxLines,
         lineCount: lines.length,
-        stoppedAtLine: errors[0].line,
         errors: [errors[0]],
         warnings
       };
@@ -645,10 +590,7 @@ export function validateJava(code, maxLines = 50) {
     rejectedCode: errors.length > 0,
     hasMissingItem: hasMissing,
     rejectionReason: errors.length > 0 ? (hasMissing ? 'missing_item' : 'incorrect_code') : null,
-    lineLimitExceeded: false,
-    maxLines,
     lineCount: lines.length,
-    stoppedAtLine: errors.length > 0 ? errors[0].line : null,
     errors,
     warnings
   };

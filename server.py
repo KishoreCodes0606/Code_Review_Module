@@ -12,9 +12,10 @@ Endpoints:
 import ast
 import json
 import hashlib
+import sys
 import uuid
 from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 import re
 
 # M2 analysis pipeline (additive; import failure degrades gracefully so the
@@ -55,7 +56,7 @@ def classify_language(code: str, filename: str = "", target_lang: str = "auto") 
         return {"accepted": False, "language": "html", "name": "HTML", "reason": "Detected HTML markup."}
     if re.search(r'\b(using\s+System(\.[a-zA-Z0-9_]+)*\s*;|Console\.WriteLine)\b', code):
         return {"accepted": False, "language": "csharp", "name": "C#", "reason": "Detected C# syntax."}
-    if re.search(r'\b(SELECT\s+.*\s+FROM\b|INSERT\s+INTO\b|CREATE\s+TABLE\b)', code, re.I) and not re.search(r'(cur\.execute|stmt\.execute)', code):
+    if re.search(r'\b(SELECT\s+.*\s+FROM\b|INSERT\s+INTO\b|CREATE\s+TABLE\b)', code, re.I) and not re.search(r'(cursor\.execute|cur\.execute|stmt\.execute)', code):
         return {"accepted": False, "language": "sql", "name": "SQL", "reason": "Detected raw SQL query script."}
 
     # If the user or client explicitly chose Python or Java, honor that selection
@@ -477,6 +478,29 @@ class SubmissionHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # Root: JSON service index (the browser page people find at the bare URL).
+        # The React UI is NOT served here -- it runs separately on port 5173.
+        if self.path.split("?", 1)[0] == "/":
+            info = {
+                "service": "AI Code Review Platform -- Code Submission & Syntax Validation API",
+                "status": "running",
+                "note": "This is the REST API server. The React developer UI is a separate app: run 'npm run dev' in code-submission-ui/ and open http://localhost:5173.",
+                "endpoints": {
+                    "POST /api/submissions": "Validate and store a submission entity",
+                    "POST /api/submissions/validate": "Language gate + syntax validation",
+                    "POST /api/analysis": "Multi-agent quality/security analysis run",
+                    "GET /api/analysis/<run_id>": "Analysis run status summary",
+                    "GET /api/analysis/<run_id>/findings": "Findings (?category=&severity= filters)",
+                    "GET /api/health": "Liveness check",
+                },
+            }
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps(info).encode("utf-8"))
+            return
+
         # ---- M2 additive GET routes (M1 /api/health unchanged below) ----
         if self.path.startswith("/api/analysis/"):
             from urllib.parse import urlsplit, parse_qs
@@ -576,15 +600,6 @@ class SubmissionHandler(BaseHTTPRequestHandler):
         language = (body.get("language") or "auto").lower()
         source_type = body.get("source_type", "paste")
         filename = body.get("filename", "")
-        max_lines_raw = body.get("max_lines")
-        max_lines = None
-        if max_lines_raw is not None:
-            try:
-                max_lines = int(max_lines_raw)
-            except (ValueError, TypeError):
-                max_lines = 50
-        else:
-            max_lines = 50
 
 
         # 1. Gatekeeper check
@@ -619,65 +634,7 @@ class SubmissionHandler(BaseHTTPRequestHandler):
 
         target_lang = lang_info["language"]
 
-        # 2. Line limit check (Strict gate for code length)
-        code_lines = code.split("\n")
-        line_count = len(code_lines)
-        if max_lines and line_count > max_lines:
-            halt_line = max_lines + 1
-            exceeded_snippet = code_lines[max_lines].strip() if max_lines < line_count else ""
-            limit_error_payload = {
-                "valid": False,
-                "line_limit_exceeded": True,
-                "max_lines": max_lines,
-                "line_count": line_count,
-                "stopped_at_line": halt_line,
-                "language": target_lang,
-                "language_name": lang_info["name"],
-                "message": f"Code limit exceeded: Code contains {line_count} lines, exceeding the configured limit of {max_lines} lines. Validator stopped at line {halt_line}; subsequent lines were not validated.",
-                "errors": [{
-                    "line": halt_line,
-                    "col": 1,
-                    "message": f"CodeLimitExceeded: Exceeded maximum allowed line limit ({max_lines} lines). Validator stopped at line {halt_line}; rest of the code was not validated.",
-                    "rule": "code_line_limit_exceeded",
-                    "text": exceeded_snippet,
-                    "hint": f"Shorten code to {max_lines} lines or increase the limit in editor settings."
-                }],
-                "warnings": []
-            }
-
-            if self.path == "/api/submissions/validate":
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self._send_cors_headers()
-                self.end_headers()
-                self.wfile.write(json.dumps(limit_error_payload).encode("utf-8"))
-                return
-
-            if self.path == "/api/submissions":
-                code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
-                submission = {
-                    "id": str(uuid.uuid4()),
-                    "source_type": source_type,
-                    "filename": filename,
-                    "language": target_lang,
-                    "code": code,
-                    "code_hash": code_hash,
-                    "line_count": line_count,
-                    "max_lines": max_lines,
-                    "line_limit_exceeded": True,
-                    "size_bytes": len(code.encode("utf-8")),
-                    "syntax_valid": False,
-                    "syntax_errors": limit_error_payload["errors"],
-                    "created_at": datetime.utcnow().isoformat()
-                }
-                self.send_response(422)
-                self.send_header("Content-Type", "application/json")
-                self._send_cors_headers()
-                self.end_headers()
-                self.wfile.write(json.dumps(submission).encode("utf-8"))
-                return
-
-        # 3. Syntax validation (only executed if within line limits)
+        # 2. Syntax validation (only executed if within line limits)
         if target_lang == "python":
             val_result = validate_python_ast(code)
         else:
@@ -722,6 +679,31 @@ class SubmissionHandler(BaseHTTPRequestHandler):
         self.send_response(404)
         self.end_headers()
 
+class AnalysisHTTPServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer used by the real server (tests boot the same class).
+
+    A single analysis request runs synchronously in its request thread and can
+    take seconds-to-minutes (Bandit subprocess, PMD JVM run, first-run PMD
+    download). The previous single-threaded HTTPServer made every queued
+    request -- including GET /api/health -- wait for it, which caused the
+    observed health-hang. Threads also mean a client disconnect (browser tab
+    closed mid-response: WinError 10053 / ConnectionReset / BrokenPipe) cannot
+    wedge the server, and such disconnects are logged quietly instead of as a
+    full traceback because they are not server faults.
+    """
+
+    def handle_error(self, request, client_address):
+        if isinstance(sys.exc_info()[1], (ConnectionAbortedError,
+                                          ConnectionResetError, BrokenPipeError)):
+            return  # client went away mid-response; next request is unaffected
+        super().handle_error(request, client_address)
+
+
+def build_analysis_server(server_address):
+    """Single construction point for the live server (tests reuse this)."""
+    return AnalysisHTTPServer(server_address, SubmissionHandler)
+
+
 def main():
     import sys
     if hasattr(sys.stdout, 'reconfigure'):
@@ -731,11 +713,15 @@ def main():
             pass
 
     server_address = ("", PORT)
-    httpd = HTTPServer(server_address, SubmissionHandler)
+    httpd = build_analysis_server(server_address)
     print(f"[READY] Code Submission Validation API Server running on http://localhost:{PORT}")
     print(f"   - POST /api/submissions (Full Submission Model)")
     print(f"   - POST /api/submissions/validate (Syntax Check)")
     print(f"   - GET  /api/health (Health Check)")
+    if ORCHESTRATOR_AVAILABLE:
+        print(f"   - POST /api/analysis (Multi-Agent Code Analysis)")
+        print(f"   - GET  /api/analysis/<run_id> (Run Status)")
+        print(f"   - GET  /api/analysis/<run_id>/findings (Findings)")
     httpd.serve_forever()
 
 if __name__ == "__main__":

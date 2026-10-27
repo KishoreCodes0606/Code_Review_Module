@@ -40,12 +40,31 @@ def run_agent(code: str, language: str, file_path: str) -> tuple[list, AgentRunR
             agent="code_analysis_agent", status="failed", error=str(e)), {})
 
     findings = res["findings"]
+    metrics = res.get("metrics", {})
+    # A scanner that could not parse the source analysed nothing. Reporting
+    # "succeeded" here would turn "not analysed" into "clean" (0 findings =
+    # healthy score), so the agent is explicitly marked failed. Findings that
+    # were still collected (e.g. PMD, which parses modern Java itself) are
+    # retained so the run becomes PARTIAL instead of silently empty.
+    if metrics.get("parsed") is False:
+        return finish(findings, AgentRunResult(
+            agent="code_analysis_agent", status="failed",
+            error=_incomplete_analysis_error(language, metrics)), metrics)
     return finish(findings, AgentRunResult(
-        agent="code_analysis_agent", status="succeeded"), res.get("metrics", {}))
+        agent="code_analysis_agent", status="succeeded"), metrics)
+
+
+def _incomplete_analysis_error(language: str, metrics: dict) -> str:
+    detail = metrics.get("parse_error") or "the source could not be parsed"
+    return (
+        f"analysis_incomplete: the {language} quality scanners could not parse "
+        f"this source ({detail}); built-in detectors were skipped, so a short or "
+        f"empty finding list from this agent is NOT a clean result."
+    )
 
 
 def _java_quality_with_pmd(code: str, file_path: str) -> dict:
-    from analysis.java_quality import analyze_java_quality, add_pmd_findings
+    from analysis.java_quality import add_pmd_findings, analyze_java_quality
     res = analyze_java_quality(code, file_path)
     # PMD needs a real file on disk (it scans paths, not stdin)
     try:

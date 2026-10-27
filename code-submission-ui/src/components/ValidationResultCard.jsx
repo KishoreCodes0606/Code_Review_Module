@@ -32,15 +32,14 @@ export default function ValidationResultCard({
         <FileCheck className="w-10 h-10 mx-auto text-slate-600 mb-2" />
         <p className="text-sm font-medium">No code analyzed yet</p>
         <p className="text-xs text-slate-600 mt-1">
-          Paste or upload your code, then click "Validate Code" or press Ctrl+Enter.
+          Paste or upload your code, then click "Validate Syntax" or press Ctrl+Enter.
         </p>
       </div>
     );
   }
 
   const isLanguageAccepted = classification?.isAcceptable;
-  const isLimitExceeded = Boolean(validationResult?.lineLimitExceeded);
-  const isSyntaxValid = validationResult?.valid && !isLimitExceeded;
+  const isSyntaxValid = Boolean(validationResult?.valid);
   const detectedName = classification?.languageName || 'Unknown';
   const errors = validationResult?.errors || [];
   const warnings = validationResult?.warnings || [];
@@ -112,66 +111,9 @@ export default function ValidationResultCard({
             </div>
           </div>
         </div>
-      ) : isLimitExceeded ? (
-        /* =========================================================================
-           SCENARIO 2: CODE EXCEEDS SET LINE LIMIT (VALIDATION HALTED EARLY)
-           ========================================================================= */
-        <div className="rounded-xl p-5 border bg-rose-950/40 border-rose-500/70 shadow-lg shadow-rose-950/30 space-y-4">
-          <div className="flex items-start sm:items-center justify-between gap-4">
-            <div className="flex items-start sm:items-center gap-3.5">
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border bg-rose-500/20 text-rose-400 border-rose-500/40">
-                <AlertOctagon className="w-6 h-6" />
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-white tracking-tight">
-                    Code Line Limit Exceeded
-                  </h3>
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border bg-rose-500/25 text-rose-300 border-rose-500/50">
-                    VALIDATION HALTED
-                  </span>
-                </div>
-                <p className="text-xs text-rose-200 mt-1 leading-relaxed">
-                  The submitted code contains <strong className="text-white underline">{validationResult.lineCount} lines</strong>, exceeding the allowed limit of <strong className="text-white underline">{validationResult.maxLines} lines</strong>.
-                  The validator stopped immediately at <strong className="text-yellow-300">line {validationResult.stoppedAtLine || (validationResult.maxLines + 1)}</strong>. The remaining lines were not evaluated.
-                </p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={onOpenPayloadModal}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors shrink-0"
-            >
-              <Code className="w-3.5 h-3.5" />
-              <span>View JSON</span>
-            </button>
-          </div>
-
-          {/* Limit Threshold Breakdown Table */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-rose-500/20 text-center font-mono">
-            <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-sans">Set Limit</span>
-              <span className="text-sm font-bold text-indigo-300">{validationResult.maxLines} lines</span>
-            </div>
-            <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-sans">Submitted Code</span>
-              <span className="text-sm font-bold text-rose-400">{validationResult.lineCount} lines</span>
-            </div>
-            <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-sans">Stopped At</span>
-              <span className="text-sm font-bold text-yellow-300">Line {validationResult.stoppedAtLine || (validationResult.maxLines + 1)}</span>
-            </div>
-            <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-800">
-              <span className="text-[10px] text-slate-400 block font-sans">Subsequent Code</span>
-              <span className="text-[11px] font-bold text-rose-300 block mt-0.5">NOT VALIDATED</span>
-            </div>
-          </div>
-        </div>
       ) : (
         /* =========================================================================
-           SCENARIO 3: CODE IS RECOGNIZED AS PYTHON OR JAVA
+           SCENARIO 2: CODE IS RECOGNIZED AS PYTHON OR JAVA
            ========================================================================= */
         <div
           className={`rounded-xl p-5 border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
@@ -308,17 +250,15 @@ export default function ValidationResultCard({
         </div>
       )}
 
-      {/* Syntax Errors / Code Limit Errors List */}
+      {/* Syntax Errors List */}
       {isLanguageAccepted && !isSyntaxValid && errors.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center justify-between text-xs text-slate-400">
             <span className="font-semibold uppercase tracking-wider text-rose-400 flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4" />
-              {isLimitExceeded
-                ? `Code Limit Issue (${errors.length})`
-                : `Issues in ${detectedName} (${errors.length})`}
+              {`Issues in ${detectedName} (${errors.length})`}
             </span>
-            <span>{isLimitExceeded ? 'Validation stopped at this line' : 'Resolve issues before code can be submitted'}</span>
+            <span>Resolve issues before code can be submitted</span>
           </div>
 
           <div className="space-y-2">

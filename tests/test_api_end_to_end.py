@@ -147,3 +147,55 @@ def test_m2_unknown_run_is_404(server_url):
     with pytest.raises(urllib.error.HTTPError) as err:
         get_json(server_url, "/api/analysis/run-does-not-exist")
     assert err.value.code == 404
+
+
+# ---- root URL service index (JSON, explicit) -------------------------------
+
+def test_root_returns_json_service_index(server_url):
+    status, body = get_json(server_url, "/")
+    assert status == 200
+    assert body["service"]
+    assert body["status"] == "running"
+    assert "5173" in body["note"]           # UI location is explicit, not faked
+    endpoints = body["endpoints"]
+    for key in ("POST /api/submissions", "POST /api/submissions/validate",
+                "POST /api/analysis", "GET /api/health"):
+        assert key in endpoints
+    # JS analysis code in the sample must not break the shape — engine check
+    assert "S-JAVA-CRYPTO" not in json.dumps(body)  # no analysis payload leaks to /
+
+
+def test_root_ignores_query_string(server_url):
+    status, body = get_json(server_url, "/?tab=x")
+    assert status == 200 and body["status"] == "running"
+
+
+# ---- gatekeeper accepts SQL-flavored Python (UI sample regression) ---------
+# Regression: the raw-SQL foreign-language heuristic used to match the built-in
+# UI sample "Python: SQL Injection (Valid Syntax)" and 422 it, because its
+# exemption guard only matched the literal substring 'cur.execute' and not
+# 'cursor.execute'.
+
+REPO_SAMPLE_PY = (
+    "import sqlite3\n\ndef get_user_by_id(db_conn, uid):\n"
+    "    cursor = db_conn.cursor()\n"
+    "    query = \"SELECT id, username, email, role FROM users WHERE id=\" + uid\n"
+    "    cursor.execute(query)\n    return cursor.fetchone()\n"
+)
+
+
+def test_m1_gatekeeper_accepts_sql_flavored_python(server_url):
+    status, body = post_json(server_url, "/api/submissions/validate",
+                             {"code": REPO_SAMPLE_PY, "language": "python"})
+    assert status == 200
+    assert body["valid"] is True
+    assert body["language"] == "python"
+
+
+def test_m1_gatekeeper_still_rejects_raw_sql(server_url):
+    with pytest.raises(urllib.error.HTTPError) as err:
+        post_json(server_url, "/api/submissions/validate",
+                  {"code": "CREATE TABLE users (id INT);", "language": "auto"})
+    assert err.value.code == 422
+    body = json.loads(err.value.read().decode())
+    assert body["rejected_language"] is True

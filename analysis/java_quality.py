@@ -32,13 +32,43 @@ _SQL_TOKEN = re.compile(
 )
 
 
+def _parse_failure_reason(exc: Exception) -> str:
+    """Human-readable cause for a javalang bail-out (its message is often empty)."""
+    position = getattr(exc, "position", None)
+    where = ""
+    if position is not None:
+        where = f" at line {getattr(position, 'line', '?')}, col {getattr(position, 'column', '?')}"
+    detail = str(exc).strip()
+    reason = f"javalang {javalang_version()} could not parse the source{where}"
+    if detail:
+        reason += f": {detail}"
+    reason += ("; Java 14+ syntax (records, sealed classes, text blocks, switch "
+               "expressions) is not supported by this parser")
+    return reason
+
+
+def javalang_version() -> str:
+    try:
+        import javalang
+        return getattr(javalang, "__version__", "0.13.x")
+    except Exception:
+        return "0.13.x"
+
+
 def analyze_java_quality(java_source: str, file_path: str) -> dict:
     """Returns {'findings': [...], 'metrics': {...}} — never executes code."""
     try:
         import javalang
         tree = javalang.parse.parse(java_source)
     except Exception as e:          # javalang cannot read the file at all
-        return {"findings": [], "metrics": {"parsed": False, "parse_error": str(e)}}
+        # This is "not analysed", not "clean". The caller (code_analysis_agent)
+        # reads parsed/parse_error and reports the quality scan as failed so an
+        # empty list here can never be presented as a healthy result.
+        return {"findings": [], "metrics": {
+            "parsed": False,
+            "parser": "javalang",
+            "parse_error": _parse_failure_reason(e),
+        }}
 
     lines = java_source.splitlines()
     findings: list[Finding] = []
@@ -317,12 +347,13 @@ def _magic_numbers(body_text: str, start: int) -> dict[str, int]:
 # --- PMD passthrough -------------------------------------------------------
 
 
-def add_pmd_findings(java_path: str, file_path: str, findings: list) -> list[str]:
+def add_pmd_findings(java_path: str, file_path: str, findings: list) -> str:
     """Run PMD over the file and convert quality violations. Returns a status
-    note ('pmd: unavailable' / 'pmd: ok') rather than raising."""
+    note ('unavailable' / 'ok' / 'error') rather than raising. Violations are
+    kept even when PMD also reported a processing error."""
     from analysis.pmd_client import run_pmd
     pmd_findings, status = run_pmd(java_path)
-    if status != "ok" or not pmd_findings:
+    if not pmd_findings:
         return status
     try:
         with open(java_path, "r", encoding="utf-8") as fh:

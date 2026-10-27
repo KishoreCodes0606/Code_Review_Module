@@ -30,8 +30,12 @@ EXEC_SINK_METHODS = {"execute", "executemany", "executescript", "executesql"}
 PY_SINK_NAMES = ("os.system", "os.popen", "eval", "exec", "compile")
 BROKEN_HASHES = {"md5", "sha1"}
 
+# Leading boundary is (?<![A-Za-z0-9]) rather than \b so that constant-style
+# names such as DB_PASSWORD / API_KEY / PRIVATE_KEY match: '_' is a word
+# character, so \b never fires between it and the keyword.
 SECRET_VAR_RE = re.compile(
-    r"\b(password|passwd|pwd|secret|api_?key|auth_?token|access_?token|private_key)\w*\b", re.I)
+    r"(?<![A-Za-z0-9])(password|passwd|pwd|secret|api_?key|auth_?token|access_?token|private_key)\w*",
+    re.I)
 SECRET_PLACEHOLDERS = re.compile(
     r"['\"](?:\s*|<[^>]*>|\.{3,}|x{3,}|\*{3,}|placeholder|change[-_ ]?(?:me|it)"
     r"|replace[_ ]?me|todo|example|dummy)[\"']"

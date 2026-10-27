@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Header from './components/Header';
+import AnalysisWorkspace from './components/analysis/AnalysisWorkspace';
+import { Code2, FileSearch } from 'lucide-react';
 import LanguageSelector from './components/LanguageSelector';
 import FileUploadZone from './components/FileUploadZone';
 import CodeEditor from './components/CodeEditor';
@@ -16,24 +18,22 @@ import {
 } from './utils/syntaxValidator';
 import { classifyLanguage } from './utils/languageClassifier';
 import { SAMPLE_CODES } from './data/sampleCodes';
-import { FileText, Upload, Sparkles, CheckCircle, AlertCircle, Info, ShieldCheck } from 'lucide-react';
+import { FileText, Upload, Info, ShieldCheck } from 'lucide-react';
 
 export default function App() {
+  // Module-level navigation: M1 submission / M2 analysis. Both sections stay
+  // mounted (hidden with CSS) so neither loses state when you switch tabs.
+  const [activeModule, setActiveModule] = useState('submission'); // 'submission' | 'analysis'
+
   // Input state
   const [activeTab, setActiveTab] = useState('paste'); // 'paste' | 'upload'
   const [code, setCode] = useState('');
   const [uploadedFile, setUploadedFile] = useState(null);
 
-  // Language selection mode ('auto', 'python', 'java')
-  const [languageMode, setLanguageMode] = useState('auto');
-
-  // Configurable fixed line limit for code pasting/submission (default: 50 lines)
-  const [maxLines, setMaxLines] = useState(50);
-
-  // Dynamic language classification & gatekeeper
+  // Dynamic language classification & gatekeeper (auto-detect)
   const classification = useMemo(() => {
-    return classifyLanguage(code, uploadedFile?.name, languageMode);
-  }, [code, uploadedFile, languageMode]);
+    return classifyLanguage(code, uploadedFile?.name, 'auto');
+  }, [code, uploadedFile]);
 
   // Validation & metrics state
   const [validationResult, setValidationResult] = useState(null);
@@ -157,7 +157,7 @@ export default function App() {
       const resp = await fetch('http://localhost:8000/api/submissions/validate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, language: currentLanguage, max_lines: maxLines }),
+        body: JSON.stringify({ code, language: currentLanguage }),
         signal: controller.signal
       });
       clearTimeout(timeoutId);
@@ -170,19 +170,15 @@ export default function App() {
           rejectedCode: Boolean(data.rejected_code || !data.valid),
           rejectionReason: data.rejection_reason || (hasMissing ? 'missing_item' : 'incorrect_code'),
           hasMissingItem: hasMissing,
-          lineLimitExceeded: Boolean(data.line_limit_exceeded),
-          maxLines: data.max_lines || maxLines,
-          lineCount: data.line_count || code.split('\n').length,
-          stoppedAtLine: data.stopped_at_line,
           errors: data.errors || [],
           warnings: data.warnings || []
         };
       } else {
-        result = currentLanguage === 'python' ? validatePython(code, maxLines) : validateJava(code, maxLines);
+        result = currentLanguage === 'python' ? validatePython(code) : validateJava(code);
       }
     } catch {
       // Backend not running or offline: high-fidelity client-side parser
-      result = currentLanguage === 'python' ? validatePython(code, maxLines) : validateJava(code, maxLines);
+      result = currentLanguage === 'python' ? validatePython(code) : validateJava(code);
     }
 
     setValidationResult(result);
@@ -198,9 +194,6 @@ export default function App() {
       code: code,
       code_hash: hash,
       line_count: code.split('\n').length,
-      max_lines: maxLines,
-      line_limit_exceeded: Boolean(result.lineLimitExceeded),
-      stopped_at_line: result.stoppedAtLine || null,
       size_bytes: new Blob([code]).size,
       syntax_valid: result.valid,
       rejected_code: Boolean(result.rejectedCode),
@@ -226,7 +219,6 @@ export default function App() {
   const handleFileLoaded = (fileData) => {
     setUploadedFile(fileData);
     setCode(fileData.content);
-    setLanguageMode('auto');
   };
 
   // Remove uploaded file
@@ -237,11 +229,6 @@ export default function App() {
   // Load sample code
   const handleLoadSample = (sample) => {
     setCode(sample.code);
-    if (sample.language === 'python' || sample.language === 'java') {
-      setLanguageMode(sample.language);
-    } else {
-      setLanguageMode('auto');
-    }
     setUploadedFile({
       name: sample.filename,
       size: new Blob([sample.code]).size,
@@ -261,7 +248,6 @@ export default function App() {
   // Load from submission history
   const handleLoadFromHistory = (item) => {
     setCode(item.code);
-    setLanguageMode(item.language);
     if (item.filename) {
       setUploadedFile({
         name: item.filename,
@@ -295,6 +281,40 @@ export default function App() {
       {/* Top Header */}
       <Header onReset={handleReset} />
 
+      {/* Module switcher: M1 submission (existing) / M2 AI analysis (new) */}
+      <div className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        <div className="flex items-center p-1 rounded-xl bg-slate-900 border border-slate-800 w-fit text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setActiveModule('submission')}
+            aria-pressed={activeModule === 'submission'}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              activeModule === 'submission'
+                ? 'bg-indigo-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <FileSearch className="w-4 h-4" />
+            <span>Code Submission / Syntax Validation</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveModule('analysis')}
+            aria-pressed={activeModule === 'analysis'}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+              activeModule === 'analysis'
+                ? 'bg-rose-600 text-white shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Code2 className="w-4 h-4" />
+            <span>AI Code Analysis (M2)</span>
+          </button>
+        </div>
+      </div>
+
+      {/* M1 module — remains mounted while hidden so state is not destroyed */}
+      <div className={activeModule === 'submission' ? 'contents' : 'hidden'}>
       {/* Main Workspace Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Module Banner / Introduction */}
@@ -352,9 +372,7 @@ export default function App() {
 
               {/* Language Selector */}
               <LanguageSelector
-                selectedMode={languageMode}
                 classification={classification}
-                onSelectMode={setLanguageMode}
               />
             </div>
 
@@ -378,8 +396,6 @@ export default function App() {
               errors={validationResult?.errors || []}
               isValidating={isValidating}
               metrics={codeMetrics}
-              maxLines={maxLines}
-              onChangeMaxLines={setMaxLines}
             />
           </div>
 
@@ -416,17 +432,23 @@ export default function App() {
           </div>
         </div>
       </main>
+      </div>
+
+      {/* M2 AI Code Analysis module — also kept mounted so runs survive tab switches */}
+      <div className={activeModule === 'analysis' ? 'contents' : 'hidden'}>
+        <AnalysisWorkspace />
+      </div>
 
       {/* Submission Entity Schema Modal */}
       <SubmissionPayloadModal
-        isOpen={showPayloadModal}
+        isOpen={showPayloadModal && activeModule === 'submission'}
         onClose={() => setShowPayloadModal(false)}
         submissionPayload={submissionPayload}
       />
 
       {/* Multi-Agent Pipeline Simulation Modal */}
       <PipelineSimulationModal
-        isOpen={showSimulationModal}
+        isOpen={showSimulationModal && activeModule === 'submission'}
         onClose={() => setShowSimulationModal(false)}
         submission={submissionPayload}
       />

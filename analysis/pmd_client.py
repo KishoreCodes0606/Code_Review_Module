@@ -81,15 +81,27 @@ def run_pmd(target_path: str, log=lambda s: None):
                 return [], "error"
             with open(report_path, "r", encoding="utf-8") as fh:
                 xml_text = fh.read()
-        return _parse_xml(xml_text), "ok"
+        violations, errors = _parse_xml(xml_text)
+        if errors:
+            # PMD itself could not parse the file. Reporting "ok" here would let
+            # a failed scan look like a clean one, so the errors are surfaced.
+            log(f"pmd reported {len(errors)} processing error(s): {errors[0][:160]}")
+            return violations, "error"
+        return violations, "ok"
     except Exception as e:
         log(f"pmd run failed: {e}")
         return [], "error"
 
 
-def _parse_xml(xml_text: str) -> list[dict]:
+def _parse_xml(xml_text: str) -> tuple[list[dict], list[str]]:
+    """Return (violations, processing_errors) from a PMD XML report.
+
+    PMD reports an unparseable file as an <error> element with msg=..., not as
+    a violation. Those errors must be propagated: they mean "nothing analysed".
+    """
     import xml.etree.ElementTree as ET
     violations: list[dict] = []
+    errors: list[str] = []
     # strip anything before the XML declaration (belt and braces: report file
     # is clean, but keep parsing resilient if stdout is ever reused)
     start = xml_text.find("<?xml")
@@ -97,11 +109,12 @@ def _parse_xml(xml_text: str) -> list[dict]:
         xml_text = xml_text[start:]
     try:
         root = ET.fromstring(xml_text)
-    except ET.ParseError:
-        return violations
+    except ET.ParseError as e:
+        return violations, [f"unreadable PMD report: {e}"]
     for node in root.iter():
         # PMD 7 reports are namespaced: match the local name only
-        if node.tag.rsplit("}", 1)[-1] == "violation":
+        local = node.tag.rsplit("}", 1)[-1]
+        if local == "violation":
             violations.append({
                 "rule": node.get("rule", ""),
                 "beginline": int(node.get("beginline", "1") or 1),
@@ -109,7 +122,11 @@ def _parse_xml(xml_text: str) -> list[dict]:
                 "description": "".join(node.itertext()).strip(),
                 "violation_text": "",
             })
-    return violations
+        elif local == "error":
+            msg = (node.get("msg") or "".join(node.itertext()).strip()).strip()
+            filename = os.path.basename(node.get("filename") or "")
+            errors.append(f"{filename}: {msg}" if filename else msg)
+    return violations, errors
 
 
 def run_java_quality(java_path: str, log=lambda s: None) -> tuple[list[dict], str]:

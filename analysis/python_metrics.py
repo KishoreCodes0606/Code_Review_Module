@@ -35,8 +35,15 @@ def analyze_python_quality(code: str, file_path: str) -> dict:
     """Returns {'findings': [Finding], 'metrics': {..}}."""
     try:
         tree = ast.parse(code)
-    except SyntaxError:
-        return {"findings": [], "metrics": {"parsed": False}}
+    except SyntaxError as e:
+        # "not analysed" is not "clean": the agent reads these metrics and
+        # reports the quality scan as failed instead of returning a tidy [].
+        return {"findings": [], "metrics": {
+            "parsed": False,
+            "parser": "ast",
+            "parse_error": (f"ast.parse failed at line {e.lineno}, col {e.offset}: "
+                            f"{e.msg or 'invalid syntax'}"),
+        }}
 
     findings: list[Finding] = []
     metrics: dict = {"parsed": True}
