@@ -4,7 +4,7 @@
  * Detects and rejects any other language (JavaScript, C/C++, C#, PHP, Go, Rust, Ruby, HTML, CSS, SQL, Shell, etc.).
  */
 
-export function classifyLanguage(code, filename = '', userTargetLanguage = 'auto') {
+export function classifyLanguage(code, filename = '', _userTargetLanguage = 'auto') {
   if (!code || !code.trim()) {
     return {
       isAcceptable: false,
@@ -77,7 +77,6 @@ export function classifyLanguage(code, filename = '', userTargetLanguage = 'auto
   }
 
   // 2. Content-based heuristic classification
-  const lines = code.split('\n');
   const scores = {
     python: 0,
     java: 0,

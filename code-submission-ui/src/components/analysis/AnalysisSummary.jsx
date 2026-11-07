@@ -1,14 +1,5 @@
 import React from 'react';
-import {
-  Activity,
-  AlertOctagon,
-  CheckCircle2,
-  Clock,
-  FileSearch,
-  Scale,
-  ShieldAlert,
-} from 'lucide-react';
-import { healthScoreBar, healthScoreTone } from './common';
+import { Activity, AlertOctagon, CheckCircle2, Clock, FileSearch, Scale } from 'lucide-react';
 
 /**
  * Analysis summary cards rendered ONLY from real backend run-summary fields:
@@ -133,7 +124,6 @@ export function AnalysisSummaryCard({ run, findingsCount }) {
     (s) => !SEVERITY_CARDS.some((c) => c.key === s)
   );
   const total = run.finding_count ?? findingsCount ?? 0;
-  const score = run.health_score;
   const coverage = coverageNotes(run.metrics);
 
   return (
@@ -193,46 +183,12 @@ export function AnalysisSummaryCard({ run, findingsCount }) {
         </div>
       )}
 
-      {/* Code health score — rendered straight from the backend value */}
-      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-            <ShieldAlert className="w-3.5 h-3.5 text-indigo-400" /> Code Health Score
-          </span>
-          <span
-            className={`text-2xl font-bold font-mono ${
-              run.status === 'COMPLETED' ? healthScoreTone(score) : 'text-amber-300'
-            }`}
-          >
-            {score === null || score === undefined ? '—' : score}/100
-          </span>
-        </div>
-        <div
-          className="h-2 rounded-full bg-slate-800 overflow-hidden"
-          role="meter"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={score ?? undefined}
-          aria-label="Code health score"
-        >
-          <div
-            className={`h-full rounded-full ${healthScoreBar(score)}`}
-            style={{ width: `${Math.max(0, Math.min(100, score ?? 0))}%` }}
-          />
-        </div>
-        {run.status === 'COMPLETED' ? (
-          <p className="text-[10px] text-slate-500">
-            Computed by the orchestrator from the merged findings' severity weights. NOT a security
-            guarantee — heuristic warnings are included in the weighting.
-          </p>
-        ) : (
-          <p className="text-[10px] text-amber-300">
-            This run is {run.status} — the score only reflects the findings that were actually
-            collected. A high score here is <strong>not</strong> a clean bill of health: findings may
-            be missing because part of the analysis did not run.
-          </p>
-        )}
-      </div>
+      {/*
+        Code Health Score is rendered by <HealthScoreCard health={run.health} /> in the
+        workspace, using the M3 `health` object (formula, deduction breakdown, grouping
+        of duplicates, and the PARTIAL/FAILED withholding decision). Keeping a second,
+        independently-formatted score here would let the two disagree.
+      */}
 
       {/* Agent outcome transparency (esp. for PARTIAL / FAILED) */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">

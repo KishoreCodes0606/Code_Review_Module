@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { ExternalLink, File, MapPin, X } from 'lucide-react';
 import { CATEGORY_LABEL, FindingKindBadge, SeverityBadge } from './common';
+import { RemediationBlock } from './RemediationPanel';
 
 /**
  * Detail panel for a single finding. Renders ONLY fields the backend actually
@@ -20,7 +21,14 @@ function Field({ label, children }) {
   );
 }
 
-export function FindingDetails({ finding, onClose }) {
+export function FindingDetails({
+  finding,
+  onClose,
+  remediation = null,
+  remediationState = 'idle',
+  remediationError = '',
+  onRetryRemediation,
+}) {
   useEffect(() => {
     if (!finding) return undefined;
     const onKey = (e) => {
@@ -117,6 +125,13 @@ export function FindingDetails({ finding, onClose }) {
         )}
 
         <Field label="Remediation guidance">{finding.remediation_advice}</Field>
+
+        <RemediationBlock
+          remedy={remediation}
+          state={remediationState}
+          error={remediationError}
+          onRetry={onRetryRemediation}
+        />
 
         {(finding.cwe_id || finding.owasp_category) && (
           <div className="flex flex-wrap items-center gap-2">

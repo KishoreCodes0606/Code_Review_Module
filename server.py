@@ -455,11 +455,27 @@ class SubmissionHandler(BaseHTTPRequestHandler):
             return
 
         state = orchestrator.get_run(run_id)
+        # Test-only failure simulation. Gated by CODE_REVIEW_TEST_FAULTS at
+        # process start (see m3/faults.py); a normal server has the variable
+        # unset, so no HTTP request can reach this branch.
+        try:
+            from m3 import faults as _m3_faults
+            _m3_faults.apply(state)
+        except Exception:
+            pass
+        # M3 additive: attach the deterministic health object to the M2 summary.
+        # Every M2 key is unchanged; only "health" is added (and removed again
+        # automatically if the M3 layer is unavailable).
+        try:
+            from m3.service import run_payload as _m3_run_payload
+            summary = _m3_run_payload(state)
+        except Exception:
+            summary = orchestrator.run_summary(state)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self._send_cors_headers()
         self.end_headers()
-        self.wfile.write(json.dumps(orchestrator.run_summary(state)).encode("utf-8"))
+        self.wfile.write(json.dumps(summary).encode("utf-8"))
 
     def _m2_send_analysis_not_found(self):
         self.send_response(404)
@@ -467,6 +483,219 @@ class SubmissionHandler(BaseHTTPRequestHandler):
         self._send_cors_headers()
         self.end_headers()
         self.wfile.write(json.dumps({"error": "run_not_found"}).encode("utf-8"))
+
+    # =====================================================================
+    # M3 additive routes: remediation, PR summary, RAG assistant, reports
+    # Every handler delegates to m3/service.py (the same code the tests and the
+    # React UI use) and never re-implements analysis logic here.
+    # =====================================================================
+
+    def _m3_send_json(self, status_code, payload):
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("X-M3-Supported", "true")
+        self._send_cors_headers()
+        self.end_headers()
+        self.wfile.write(json.dumps(payload, default=str).encode("utf-8"))
+
+    def _m3_send_error(self, status_code, error, message):
+        self._m3_send_json(status_code, {"status": "error", "error": error, "message": message})
+
+    def _m3_handle_status(self):
+        """GET /api/m3/status - capabilities, KB state, LLM config, PDF support."""
+        try:
+            from m3.service import capabilities as m3_capabilities
+        except ImportError as exc:
+            self._m3_send_error(503, "M3 Unavailable", f"M3 service not available: {exc}")
+            return
+        try:
+            self._m3_send_json(200, {
+                "status": "ok",
+                "m3": {
+                    "available": True,
+                    "features": {
+                        "remediation": True,
+                        "pr_summary": True,
+                        "rag_agent": True,
+                        "health_score": True,
+                        "report_export": True,
+                    },
+                    "capabilities": m3_capabilities(),
+                },
+            })
+        except Exception as exc:
+            self._m3_send_error(500, "M3 Error", f"Failed to read M3 status: {exc}")
+
+    def _m3_handle_get_subroute(self, run_id, subsection, segments, query):
+        """GET sub-routes under /api/analysis/{run_id}/ for M3."""
+        from urllib.parse import parse_qs
+
+        if not run_id:
+            self._m3_send_error(400, "Missing run_id", "provide a run_id in the path")
+            return
+        if subsection == "remediation":
+            self._m3_remediation(run_id)
+            return
+        if subsection == "summary":
+            self._m3_summary(run_id)
+            return
+        if subsection == "chat":
+            if len(segments) > 4 and segments[4] == "history":
+                self._m3_chat_history(run_id)
+            else:
+                self._m3_send_error(
+                    400, "Invalid chat endpoint",
+                    "use POST /api/analysis/chat for chat messages",
+                )
+            return
+        if subsection == "report":
+            fmt = (parse_qs(query).get("format") or ["json"])[0].lower()
+            self._m3_report(run_id, fmt)
+            return
+        self._m3_send_error(404, "Not Found", f"Unknown M3 sub-route: {subsection}")
+
+    def _m3_handle_post(self, path, body):
+        """POST routes for summary generation, chat and report generation."""
+        try:
+            run_id = body.get("run_id")
+            if not run_id:
+                self._m3_send_error(400, "Missing run_id", "provide run_id in the request body")
+                return
+            if path == "/api/analysis/summary":
+                self._m3_summary(run_id, force=bool(body.get("force", False)))
+            elif path == "/api/analysis/chat":
+                self._m3_chat(body)
+            else:
+                fmt = str(body.get("format", "json")).lower()
+                self._m3_report(run_id, fmt)
+        except AttributeError:
+            self._m3_send_error(400, "Invalid Request", "request body must be a JSON object")
+
+    def _m3_remediation(self, run_id):
+        try:
+            from m3.service import generate_remediation, RunNotFound
+        except ImportError as exc:
+            self._m3_send_error(503, "M3 Unavailable", f"Remediation service not available: {exc}")
+            return
+        try:
+            payload = generate_remediation(run_id)
+        except RunNotFound:
+            self._m3_send_error(404, "Run Not Found", f"Analysis run '{run_id}' not found")
+            return
+        except Exception as exc:
+            self._m3_send_error(500, "Remediation Error", f"Failed to generate remediation: {exc}")
+            return
+        self._m3_send_json(200, {"status": "ok", "run_id": run_id, "remediation": payload})
+
+    def _m3_summary(self, run_id, force=False):
+        try:
+            from m3.service import generate_summary, RunNotFound
+        except ImportError as exc:
+            self._m3_send_error(503, "M3 Unavailable", f"PR summary service not available: {exc}")
+            return
+        try:
+            payload = generate_summary(run_id, force=force)
+        except RunNotFound:
+            self._m3_send_error(404, "Run Not Found", f"Analysis run '{run_id}' not found")
+            return
+        except Exception as exc:
+            self._m3_send_error(500, "Summary Error", f"Failed to generate PR summary: {exc}")
+            return
+        self._m3_send_json(200, {"status": "ok", "run_id": run_id, "summary": payload})
+
+    def _m3_chat(self, body):
+        run_id = body.get("run_id")
+        question = body.get("question") or ""
+        if not run_id:
+            self._m3_send_error(400, "Missing run_id", "provide run_id for chat")
+            return
+        if not str(question).strip():
+            self._m3_send_error(400, "Missing question", "provide a question for the assistant")
+            return
+        if len(str(question)) > 2000:
+            self._m3_send_error(400, "Question Too Long", "question must be 2000 characters or fewer")
+            return
+        try:
+            from m3.service import chat as m3_chat, RunNotFound
+        except ImportError as exc:
+            self._m3_send_error(503, "M3 Unavailable", f"Chat service not available: {exc}")
+            return
+        try:
+            payload = m3_chat(
+                run_id,
+                str(question).strip(),
+                use_llm=bool(body.get("use_llm", False)),
+                selected_finding_id=body.get("selected_finding_id"),
+            )
+        except RunNotFound:
+            self._m3_send_error(404, "Run Not Found", f"Analysis run '{run_id}' not found")
+            return
+        except ValueError as exc:
+            self._m3_send_error(400, "Invalid Request", str(exc))
+            return
+        except Exception as exc:
+            self._m3_send_error(500, "Chat Error", f"Failed to process chat: {exc}")
+            return
+        self._m3_send_json(200, payload)
+
+    def _m3_chat_history(self, run_id):
+        try:
+            from m3.service import get_history, RunNotFound
+        except ImportError as exc:
+            self._m3_send_error(503, "M3 Unavailable", f"Chat history service not available: {exc}")
+            return
+        try:
+            payload = get_history(run_id)
+        except RunNotFound:
+            self._m3_send_error(404, "Run Not Found", f"Analysis run '{run_id}' not found")
+            return
+        except Exception as exc:
+            self._m3_send_error(500, "History Error", f"Failed to get chat history: {exc}")
+            return
+        self._m3_send_json(200, payload)
+
+    def _m3_report(self, run_id, fmt):
+        if fmt not in ("json", "pdf"):
+            self._m3_send_error(400, "Invalid format", "format must be 'json' or 'pdf'")
+            return
+        try:
+            from m3.service import build_report, RunNotFound
+        except ImportError as exc:
+            self._m3_send_error(503, "M3 Unavailable", f"Report service not available: {exc}")
+            return
+        try:
+            payload, content_type, filename = build_report(run_id, fmt)
+        except RunNotFound:
+            self._m3_send_error(404, "Run Not Found", f"Analysis run '{run_id}' not found")
+            return
+        except ValueError as exc:
+            self._m3_send_error(400, "Invalid format", str(exc))
+            return
+        except Exception as exc:
+            self._m3_send_error(500, "Report Error", f"Failed to generate report: {exc}")
+            return
+
+        if fmt == "pdf":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/pdf")
+            self.send_header("Content-Disposition", 'attachment; filename="%s"' % filename)
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("X-M3-Supported", "true")
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(payload)
+            return
+
+        import json as _json
+        self._m3_send_json(200, {
+            "status": "ok",
+            "run_id": run_id,
+            "format": "json",
+            "filename": filename,
+            "report": _json.loads(payload.decode("utf-8")),
+        })
+
+
     def _send_cors_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -478,6 +707,12 @@ class SubmissionHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # ---- M3 additive route (checked before every M1/M2 path) ----
+        if self.path.split("?", 1)[0] == "/api/m3/status":
+            self._m3_handle_status()
+            return
+        # ---------------- end M3 additive route ----------------
+
         # Root: JSON service index (the browser page people find at the bare URL).
         # The React UI is NOT served here -- it runs separately on port 5173.
         if self.path.split("?", 1)[0] == "/":
@@ -508,6 +743,11 @@ class SubmissionHandler(BaseHTTPRequestHandler):
             segments = [s for s in parts.path.split("/") if s]
             run_id = segments[2] if len(segments) > 2 else ""
             subsection = segments[3] if len(segments) > 3 else ""
+            # ---- M3 additive sub-routes (before the M2 run lookup) ----
+            if subsection in ("remediation", "summary", "report", "chat"):
+                self._m3_handle_get_subroute(run_id, subsection, segments, parts.query)
+                return
+            # ---------------- end M3 additive sub-routes ----------------
             state = orchestrator.get_run(run_id) if run_id else None
             if state is None:
                 self._m2_send_analysis_not_found()
@@ -566,6 +806,13 @@ class SubmissionHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"error": "Invalid JSON body"}).encode("utf-8"))
             return
+
+        # ---- M3 additive routes (before M2/M1 logic; nothing below changes) ----
+        m3_path = self.path.split("?", 1)[0]
+        if m3_path in ("/api/analysis/summary", "/api/analysis/chat", "/api/analysis/report"):
+            self._m3_handle_post(m3_path, body)
+            return
+        # ---------------- end M3 additive routes ----------------
 
         # ---- M2 additive route (runs before M1 logic; M1 paths unchanged) ----
         if self.path == "/api/analysis":
@@ -718,6 +965,11 @@ def main():
     print(f"   - POST /api/submissions (Full Submission Model)")
     print(f"   - POST /api/submissions/validate (Syntax Check)")
     print(f"   - GET  /api/health (Health Check)")
+    print("   - M3: /api/m3/status (Capabilities)")
+    print("   - M3: /api/analysis/<run_id>/remediation (Remediation)")
+    print("   - M3: /api/analysis/<run_id>/summary (PR Summary)")
+    print("   - M3: POST /api/analysis/chat + GET .../chat/history (Assistant)")
+    print("   - M3: /api/analysis/<run_id>/report?format=json|pdf (Reports)")
     if ORCHESTRATOR_AVAILABLE:
         print(f"   - POST /api/analysis (Multi-Agent Code Analysis)")
         print(f"   - GET  /api/analysis/<run_id> (Run Status)")

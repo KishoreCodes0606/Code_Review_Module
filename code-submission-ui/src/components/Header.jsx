@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Cpu, Terminal, FileCode2, Layers, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 export default function Header({ onReset }) {
   return (
@@ -16,14 +16,14 @@ export default function Header({ onReset }) {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                  Code Submission Module
+                  Code Review Workspace
                 </h1>
                 <span className="text-[11px] font-semibold tracking-wide uppercase px-2.5 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
                   Python & Java Only
                 </span>
               </div>
               <p className="text-xs text-slate-400 hidden sm:block">
-                Automated Language Detection & Syntax Verification Engine
+                Automatic Validation &amp; AI Code Analysis
               </p>
             </div>
           </div>
@@ -33,7 +33,7 @@ export default function Header({ onReset }) {
             <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 bg-slate-800/60 border border-slate-700/60 rounded-lg px-3 py-1.5">
               <span className="flex items-center gap-1.5 text-emerald-400">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                Validator Active
+                Analysis Ready
               </span>
               <span className="text-slate-600">|</span>
               <span className="text-yellow-400 font-mono font-medium">Python 3.x</span>
@@ -46,7 +46,7 @@ export default function Header({ onReset }) {
             <button
               onClick={onReset}
               className="text-xs font-medium px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors"
-              title="Clear and start new submission"
+              title="Clear the workspace"
             >
               New Submission
             </button>

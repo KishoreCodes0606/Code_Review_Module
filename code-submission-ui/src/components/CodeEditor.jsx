@@ -2,11 +2,7 @@ import React, { useRef, useState } from 'react';
 import {
   Clipboard,
   Trash2,
-  CheckCircle2,
   AlertTriangle,
-  Play,
-  RotateCcw,
-  Sparkles,
   FileCode,
   BookOpen,
   AlertOctagon
@@ -15,15 +11,11 @@ import { SAMPLE_CODES } from '../data/sampleCodes';
 
 export default function CodeEditor({
   code,
-  language,
   onChangeCode,
-  onValidate,
   onClear,
   onLoadSample,
   errors = [],
-  isValidating = false,
-  metrics,
-  validateLabel = 'Validate Syntax' // M2 reuses this editor with 'Analyze Code'
+  metrics
 }) {
   const textareaRef = useRef(null);
   const [cursorPos, setCursorPos] = useState({ line: 1, col: 1 });
@@ -70,12 +62,7 @@ export default function CodeEditor({
     }
   };
 
-  // Keyboard shortcut Ctrl+Enter / Cmd+Enter to validate
   const handleKeyDown = (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-      e.preventDefault();
-      onValidate();
-    }
     // Handle tab key in code editor
     if (e.key === 'Tab') {
       e.preventDefault();
@@ -151,30 +138,6 @@ export default function CodeEditor({
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span className="hidden md:inline">Clear</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onValidate}
-            disabled={isValidating || !code.trim()}
-            className={`flex items-center gap-1.5 px-3.5 py-1 rounded-md font-semibold text-xs shadow transition-all ${
-              !code.trim()
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : isValidating
-                ? 'bg-indigo-700 text-indigo-200 cursor-wait'
-                : 'bg-indigo-600 hover:bg-indigo-500 text-white'
-            }`}
-            title="Run analysis (Ctrl+Enter)"
-          >
-            {isValidating ? (
-              <RotateCcw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Play className="w-3.5 h-3.5 fill-current" />
-            )}
-            <span>{validateLabel}</span>
-            <span className="hidden lg:inline text-[10px] text-indigo-200 font-mono font-normal">
-              (Ctrl+↵)
-            </span>
           </button>
         </div>
       </div>

@@ -90,3 +90,37 @@ def test_submission_round_trip(server_url):
     assert body["syntax_valid"] is True
     assert body["rejected_code"] is False
     assert len(body["code_hash"]) == 64
+
+
+JAVA_SQL_DAO = """import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+
+public class AccountDAO {
+    public ResultSet findAccount(Connection conn, String acctId) throws Exception {
+        Statement stmt = conn.createStatement();
+        String sql = "SELECT * FROM accounts WHERE id = '" + acctId + "'";
+        return stmt.executeQuery(sql);
+    }
+}
+"""
+
+
+@pytest.mark.parametrize("language", ["auto", "java"])
+def test_java_code_containing_sql_is_not_rejected_as_sql(server_url, language):
+    """A Java source with a SQL string and an execute*() call is Java, not SQL."""
+    status, body = _post(server_url, "/api/submissions/validate",
+                         {"code": JAVA_SQL_DAO, "language": language})
+    assert status == 200
+    assert body["language"] == "java"
+    assert body["valid"] is True
+    assert body["errors"] == []
+
+
+def test_raw_sql_script_is_still_rejected(server_url):
+    status, body = _post(server_url, "/api/submissions/validate",
+                         {"code": "SELECT * FROM users WHERE id = 1;",
+                          "language": "auto"})
+    assert status == 422
+    assert body["rejected_language"] is True
+    assert body["language"] == "sql"

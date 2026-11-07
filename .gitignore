@@ -6,12 +6,26 @@ __pycache__/
 venv/
 env/
 
+# Local environment files (keep the template)
+.env
+.env.*
+!.env.example
+
 # Dependencies & Build artifacts
 node_modules/
 dist/
 
 # M2 tooling (PMD is download-on-demand, never committed)
 tools/pmd/
+
+# Runtime logs (E2E server output) and generated embedding caches
+*.log
+_e2e_*.log
+m3/.cache/
+
+# Reports downloaded during local E2E runs
+code-review-run-*.json
+code-review-run-*.pdf
 
 # Operating system & IDE files
 .DS_Store

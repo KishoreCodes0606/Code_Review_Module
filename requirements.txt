@@ -6,3 +6,6 @@ pydantic>=2.0.0
 pytest>=8.0.0
 bandit>=1.7.0
 javalang>=0.13.0
+
+# M3 PDF report export (report.py). The JSON export needs no extra dependency.
+reportlab>=4.0.0

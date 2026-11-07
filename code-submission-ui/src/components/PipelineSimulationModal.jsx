@@ -1,16 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  X,
-  Play,
-  CheckCircle2,
-  Cpu,
-  ShieldCheck,
-  Wrench,
-  FileCheck2,
-  MessageSquare,
-  Sparkles,
-  ArrowRight
-} from 'lucide-react';
+import { X, CheckCircle2, Sparkles } from 'lucide-react';
 
 export default function PipelineSimulationModal({
   isOpen,

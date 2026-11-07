@@ -234,3 +234,290 @@ CORE IDEA IN ONE LINE:
    Code Smells, RAG).pdf"
       Original PDF.
 ================================================================================
+
+================================================================================
+6. MILESTONE 3 - REMEDIATION, PR SUMMARY, HEALTH SCORE, ASSISTANT, EXPORT
+================================================================================
+
+WHAT WAS ADDED (all additive: no M1/M2 route, payload key or behaviour changed)
+
+  Backend service layer (m3/)
+    config.py     environment-driven configuration (LLM optional, size limits)
+    health.py     deterministic code-health score (formula below)
+    kb.py         retrieval over the existing secure-kb documents (reuses
+                  secure-kb/kb/chunker.py + loader.py models/metadata): hybrid
+                  BM25 + cosine vectors fused by reciprocal rank, with BM25 as
+                  the fallback whenever vectors are unavailable
+    llm.py        optional OpenAI-compatible client (stdlib urllib, no hardcoded keys)
+    store.py      per-run artifacts: remediation, PR summary, chat history
+    report.py     JSON + PDF export (reportlab) built only from real run data
+    service.py    facade used by both the HTTP layer and the tests
+
+  Agents (agents/)
+    remediation_agent.py   per-finding fixes with corrected code examples
+    pr_summary_agent.py    PR-style review summary with status policy
+    assistant_agent.py     citation-required RAG assistant
+
+  HTTP routes (server.py, additive)
+    GET  /api/m3/status
+    GET  /api/analysis/<run_id>/remediation
+    GET  /api/analysis/<run_id>/summary
+    POST /api/analysis/chat                  { run_id, question, selected_finding_id? }
+    GET  /api/analysis/<run_id>/chat/history
+    GET  /api/analysis/<run_id>/report?format=json|pdf
+    POST /api/analysis/report                { run_id, format }
+    POST /api/analysis now also returns an additive "health" object.
+
+  Health score (m3/health.py)
+    penalty = sum(severity_weight) over de-duplicated findings
+    score   = max(0, 100 - min(100, penalty))
+    weights = critical 25, high 12, medium 5, low 2, info 0
+    Findings are grouped by (rule family, file, line) so the built-in engine and
+    Bandit reporting the same sink are charged once. The score is WITHHELD
+    (score=null, available=false) for PARTIAL/FAILED runs, and 100 never means
+    "secure" - only "the implemented rules reported nothing".
+
+  Frontend (code-submission-ui/src/components/analysis/)
+    HealthScoreCard.jsx    score, label, deduction breakdown, withholding notice
+    PrSummaryPanel.jsx     review status, overview, breakdown, priorities, caveats
+    RemediationPanel.jsx   per-finding fix + original/suggested comparison, KB refs
+    AssistantPanel.jsx     cited Q&A, no-KB honesty, loading/error states
+    ReportExportBar.jsx    real PDF/JSON downloads from the backend
+    FindingDetails.jsx     now embeds the remediation block for the selected finding
+
+  Tests
+    tests/test_m3_health.py, test_m3_remediation.py, test_m3_pr_summary.py,
+    test_m3_rag.py, test_m3_report.py, test_m3_api.py
+    Run everything with:  python -m pytest tests -q
+
+  Optional LLM configuration (never required, never hardcoded)
+    OPENAI_API_KEY or LLM_API_KEY, LLM_MODEL (default gpt-4o-mini),
+    LLM_BASE_URL (default https://api.openai.com/v1).
+    Without a key every M3 feature still works deterministically; the assistant
+    answers in retrieval_only mode and remediation uses templates.
+
+  Explicit limitations
+    - Knowledge base retrieval defaults to hybrid (BM25 + cosine vectors). The
+      offline embedding provider is feature hashing, which is genuine vector
+      retrieval but lexical, not neural; set EMBEDDING_PROVIDER=openai with a
+      key and model for semantic embeddings. BM25 remains the fallback.
+    - Remediation corrected code is illustrative and is NEVER applied to the
+      submitted source.
+    - PMD/Bandit availability depends on the local environment; degraded coverage
+      is reported, never silently treated as a clean scan.
+
+7. M3 QA GAP CLOSURE (vector RAG, fault tests, PDF fonts)
+
+  Vector retrieval (m3/embeddings.py, m3/kb.py)
+    - One provider interface with three backends: `hashing` (default, offline,
+      no dependencies), `openai` (OpenAI-compatible /embeddings) and
+      `sentence-transformers` when installed.
+    - One vector per existing KB chunk; vectors persist to m3/.cache/ (gitignored)
+      keyed by provider/model/dimensions/chunk ids and reload on startup.
+    - Strategies: KB_RETRIEVAL_STRATEGY=auto|bm25|vector|hybrid. `auto` uses
+      hybrid when the index is available and BM25 otherwise. Hybrid fuses both
+      ranked lists with reciprocal rank fusion.
+    - Retrieval never fails: if an embedding provider is unavailable the status
+      reports `available: false` with the reason and search falls back to BM25.
+      `/api/m3/status` therefore reports the backend actually serving queries.
+    - Embedding env vars: EMBEDDING_PROVIDER, EMBEDDING_MODEL,
+      EMBEDDING_API_KEY (falls back to LLM_API_KEY/OPENAI_API_KEY),
+      EMBEDDING_BASE_URL, EMBEDDING_DIMENSIONS (hashing only), KB_RETRIEVAL_STRATEGY.
+      No key is ever hardcoded.
+    - Tests: tests/test_m3_vector.py covers Python/Java SQL injection, XSS,
+      secrets, command injection, path traversal, an unrelated question,
+      persistence, real-document citations and the unconfigured-provider fallback.
+
+  Optional LLM (m3/llm.py)
+    - Contract tests in tests/test_m3_llm_contract.py run the client against a
+      local OpenAI-compatible server (auth header, request shape, parsing, HTTP
+      error, malformed JSON, empty content, unreachable host) and cover mocked
+      remediation enrichment and assistant answers.
+    - Live-provider verification is PENDING: no LLM_API_KEY/OPENAI_API_KEY and
+      LLM_MODEL are configured in this environment. To verify live, set both and
+      POST /api/analysis/remediation or /api/analysis/chat with "use_llm": true.
+    - An LLM can never add findings, rule ids or locations; deterministic output
+      is used whenever a call fails.
+
+  Test-only failure simulation (m3/faults.py)
+    - CODE_REVIEW_TEST_FAULTS=partial|failed, read once at process start. There is
+      no HTTP route or request field that can enable it, so a normal deployment
+      cannot be forced into a fake failure. server.py applies it after the real
+      pipeline and re-derives the terminal status with the orchestrator's rules.
+    - Unset the variable (or restart normally) to return to production behavior.
+
+  PDF fonts (m3/report.py)
+    - A system TrueType font is registered when available (DejaVu, Segoe UI,
+      Arial, Liberation) with a monospace companion, enabling Unicode headings,
+      descriptions and code. Nothing is bundled and no dependency was added; when
+      no TTF is found the report falls back to the previous Helvetica output.
+    - The generated PDF states which font was used, and characters that font
+      cannot draw (CJK, emoji) are rendered as '?' instead of silently
+      disappearing.
+
+--------------------------------------------------------------------------------
+8. SETUP, CONFIGURATION AND TESTING
+--------------------------------------------------------------------------------
+
+  Prerequisites
+    Python 3.11+ (developed on 3.13), Node 18+ (developed on 24), npm.
+    PMD is downloaded on demand into tools/pmd/ (gitignored); no JDK is
+    required for the Python rules. Bandit, radon and javalang come from
+    requirements.txt.
+
+  8.1 Backend install and start
+    python -m venv .venv
+    .venv\Scripts\activate          (Windows)   source .venv/bin/activate (POSIX)
+    python -m pip install -r requirements.txt
+    python server.py                 ->  http://127.0.0.1:8000
+    The server prints its routes on startup and answers GET /api/m3/status.
+
+  8.2 Frontend install and start
+    cd code-submission-ui
+    npm install
+    npm run dev                      ->  http://localhost:5173 (5174 if busy)
+    The UI calls the backend at API_BASE in src/utils/analysisApi.js
+    (http://localhost:8000). Change that constant if the backend moves port.
+    npm run build                    ->  production bundle in dist/
+    run_full_system.bat              ->  starts both on Windows
+
+  8.3 Environment variables (all optional; see .env.example)
+    LLM_API_KEY / OPENAI_API_KEY     optional. Enables LLM remediation prose
+                                     and LLM assistant answers.
+    LLM_MODEL                        required together with the key; a key
+                                     without a model keeps the LLM disabled.
+    LLM_BASE_URL                     default https://api.openai.com/v1
+    LLM_TIMEOUT_SECONDS              default 45
+    EMBEDDING_PROVIDER               auto | hashing | openai |
+                                     sentence-transformers (default auto)
+    EMBEDDING_MODEL                  embedding model id (openai provider)
+    EMBEDDING_API_KEY                falls back to LLM_API_KEY/OPENAI_API_KEY
+    EMBEDDING_BASE_URL               embeddings endpoint base URL
+    EMBEDDING_DIMENSIONS             hashing provider width (default 512)
+    EMBEDDING_TIMEOUT_SECONDS        default 30
+    EMBEDDING_SENTENCE_MODEL         default all-MiniLM-L6-v2
+    KB_RETRIEVAL_STRATEGY            auto | bm25 | vector | hybrid
+    PMD_DISABLE_DOWNLOAD             1 keeps PMD offline (reported as
+                                     unavailable, never as a clean scan)
+    PMD_VERSION / PMD_TIMEOUT        PMD pin and run timeout
+    CODE_REVIEW_TEST_FAULTS          partial | failed. TEST ONLY - forces a
+                                     simulated agent failure. Never set it in a
+                                     real deployment.
+    No key is read from source and no secret is required to run the platform.
+
+  8.4 Optional LLM setup
+    1. Copy .env.example to .env and set LLM_API_KEY and LLM_MODEL.
+    2. Restart the backend (settings are read at start).
+    3. GET /api/m3/status -> m3.capabilities.llm.configured must be true.
+    4. Live behaviour to check: POST /api/analysis/remediation and
+       POST /api/analysis/chat with "use_llm": true. Deterministic output is
+       used automatically whenever the provider errors or times out.
+
+  8.5 Optional semantic embedding setup
+    1. Set EMBEDDING_PROVIDER=openai, EMBEDDING_MODEL=<model>, and an
+       embedding key (EMBEDDING_API_KEY or LLM_API_KEY/OPENAI_API_KEY).
+    2. Restart. The first query rebuilds the vector index into m3/.cache/.
+    3. GET /api/m3/status -> knowledge_base.backend, .strategy, .vector
+       (provider, dimensions, semantic) describe what is actually serving
+       queries. If the provider is unavailable the field says so and search
+       falls back to BM25 - retrieval never fails.
+    The default hashing provider needs no key but is lexical: keep that in
+    mind when quoting retrieval quality.
+
+  8.6 Tests and checks
+    python -m pytest tests -q        backend suite (see section 10 for counts)
+    cd code-submission-ui
+    npm run lint                     oxlint (0 errors)
+    npm run build                    production build
+
+--------------------------------------------------------------------------------
+9. ARCHITECTURE, STACK AND WORKFLOWS
+--------------------------------------------------------------------------------
+
+  9.1 Request flow
+
+    ```mermaid
+    flowchart LR
+      A[Developer: paste or upload Python/Java] --> B[M1 validation + language gate]
+      B -->|rejected| R[Rejection reason, no analysis]
+      B -->|accepted| C[M2 orchestrator: fan-out]
+      C --> D[Code Analysis Agent]
+      C --> E[Security Vulnerability Agent]
+      D --> F[Merge + severity + de-duplication]
+      E --> F
+      F --> G[Code health score]
+      F --> H[M3 Remediation Agent]
+      F --> I[M3 PR Summary Agent]
+      F --> J[M3 RAG Assistant]
+      K[(secure-kb: 13 docs / 62 chunks)] --> J
+      K --> H
+      G --> L[UI panels + JSON/PDF export]
+      H --> L
+      I --> L
+      J --> L
+    ```
+
+  9.2 Technology stack
+    Frontend   React 19, Vite 8, Tailwind CSS 3, lucide-react icons, oxlint.
+               No state library: the workspace holds run state and derives the
+               M3 view from the current run id.
+    Backend    Python 3 standard library HTTP server (server.py), a custom
+               orchestrator, Bandit/radon for Python, PMD for Java, javalang for
+               Java parsing.
+    M3 layer   m3/ package: config, health, kb + embeddings, llm, faults,
+               store, report (reportlab), service facade.
+    Knowledge   secure-kb/ documents, chunker and loader reused as-is; vectors
+               cached under m3/.cache/ (gitignored).
+
+  9.3 Agent responsibilities
+    M1  validation agent      syntax + language gate (Python/Java only),
+                              rejection reasons, no analysis on invalid input
+    M2  code analysis agent   smells, complexity, naming/dead code, quality
+        security agent        OWASP/CWE rules, Bandit, PMD
+    M3  remediation agent     per-finding fix + illustrative corrected code
+        pr summary agent      review status, overview, severity mix, priorities
+        assistant agent       retrieval-grounded Q&A with mandatory citations
+
+  9.4 Analysis workflow
+    Validation runs on every keystroke (debounced) and is cancelled when new
+    input arrives. A run id is created per accepted submission; the UI ignores
+    responses whose run id no longer matches, so results cannot be shown for
+    stale input. Agent failures produce PARTIAL/FAILED runs: findings are kept,
+    the health score is withheld, and the PR summary says the review is
+    incomplete.
+
+  9.5 Remediation workflow
+    One deterministic template per rule family supplies the fix, the reason
+    (CWE), a best practice and a corrected snippet. Optional LLM prose may
+    rewrite the explanation only: rule ids, locations and finding identity stay
+    authoritative, and corrected code is illustrative - it is never applied to
+    the submitted source.
+
+  9.6 PR summary workflow
+    Status is derived from severity and run status (Approved / Changes
+    Requested / Incomplete Review), followed by overview, severity breakdown,
+    prioritized actions and caveats naming any failed agent.
+
+  9.7 Assistant and retrieval
+    A question is embedded (or BM25-scored), the top chunks are retrieved with
+    their real source file/section, and the answer cites them. Without a KB
+    match the assistant says so; without an LLM it answers in retrieval_only
+    mode from the retrieved passages instead of inventing content.
+
+  9.8 Code health score
+    penalty = sum(severity_weight) over findings de-duplicated by
+    (rule family, file, line); score = max(0, 100 - min(100, penalty));
+    weights critical 25, high 12, medium 5, low 2, info 0. It is withheld for
+    PARTIAL/FAILED runs and 100 never means "secure".
+
+  9.9 Known limitations (see also section 6)
+    - Default retrieval vectors are lexical hashing, not neural semantics.
+    - Optional LLM and semantic embedding providers are implemented and
+      contract-tested, but not live-verified here (no credentials).
+    - Static analysis only: submitted code is never executed.
+    - PDF output needs a system TrueType font for full Unicode; characters
+      missing from that font are shown as '?'.
+    - No frontend unit-test framework: the UI is verified by build, lint and
+      real browser runs.
+    - PMD coverage depends on the local environment and is reported honestly
+      when unavailable.

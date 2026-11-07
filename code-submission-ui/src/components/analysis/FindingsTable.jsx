@@ -7,7 +7,6 @@ import {
   ListFilter,
   Search,
   ShieldCheck,
-  Table2,
   X,
 } from 'lucide-react';
 import { CATEGORY_LABEL, SeverityBadge, severityRank } from './common';
@@ -114,17 +113,15 @@ export function FindingsTable({ findings, onViewDetails, selectedFindingId, runS
             <h3 className="text-sm font-bold text-emerald-300">No findings reported</h3>
             <p className="mt-1 text-xs text-slate-400 max-w-xl mx-auto">
               The backend returned an empty findings list for this run and every agent reported
-              <span className="font-mono"> succeeded</span>. Note that M2 only implements the rule
-              sets listed in the detection-coverage notes — absence of a finding is not a guarantee
-              that no issue exists.
+              <span className="font-mono"> succeeded</span>. Note that the analysis only
+              implements the rule sets listed in the detection-coverage notes — absence of a finding
+              is not a guarantee that no issue exists.
             </p>
           </>
         )}
       </div>
     );
   }
-
-  const hasFilters = severity || category || agent || query;
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900/60 overflow-hidden">

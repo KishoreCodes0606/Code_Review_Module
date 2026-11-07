@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, Clock, FileCode2, CheckCircle2, XCircle, Trash2, ArrowUpRight } from 'lucide-react';
+import { History, Clock, CheckCircle2, XCircle, Trash2, ArrowUpRight } from 'lucide-react';
 
 export default function SubmissionHistory({
   history = [],

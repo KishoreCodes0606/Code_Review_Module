@@ -4,14 +4,12 @@ import {
   XCircle,
   AlertTriangle,
   FileCheck,
-  Hash,
   Copy,
   Check,
   Send,
   Code,
   Info,
   ShieldAlert,
-  AlertOctagon,
   Ban
 } from 'lucide-react';
 
@@ -19,8 +17,6 @@ export default function ValidationResultCard({
   classification,
   validationResult,
   metrics,
-  sourceType,
-  filename,
   onOpenPayloadModal,
   onSubmitToPipeline
 }) {

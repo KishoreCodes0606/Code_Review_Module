@@ -1,17 +1,5 @@
 import React, { useState } from 'react';
-import {
-  X,
-  Copy,
-  Check,
-  Download,
-  Terminal,
-  Layers,
-  ArrowRight,
-  ShieldCheck,
-  Cpu,
-  FileText,
-  MessageSquare
-} from 'lucide-react';
+import { X, Copy, Check, Download, Terminal } from 'lucide-react';
 
 export default function SubmissionPayloadModal({
   isOpen,
