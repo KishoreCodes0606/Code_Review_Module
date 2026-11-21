@@ -1,0 +1,91 @@
+{
+  "schema": "m4.1",
+  "notes": [
+    "Each question names the knowledge-base document a secure-coding answer must come from.",
+    "expected_topics are tokens that must appear in the retrieved chunk text, so a citation cannot pass by document name alone.",
+    "off_topic questions must produce no citations and an explicit admission instead of an invented answer."
+  ],
+  "questions": [
+    {
+      "id": "sql_injection_python",
+      "question": "How do I prevent SQL injection in Python?",
+      "expected_source": "python-sql-injection.md",
+      "expected_topics": ["parameterized", "execute"]
+    },
+    {
+      "id": "sql_injection_java",
+      "question": "How should I fix SQL injection in Java?",
+      "expected_source": "java-sql-injection.md",
+      "expected_topics": ["preparedstatement", "parameter"]
+    },
+    {
+      "id": "xss_output",
+      "question": "How can I stop XSS in HTML output?",
+      "expected_source": "xss-output-encoding.md",
+      "expected_topics": ["encoding", "html"]
+    },
+    {
+      "id": "password_hashing",
+      "question": "How should passwords be hashed?",
+      "expected_source": "password-hashing.md",
+      "expected_topics": ["bcrypt", "salt"]
+    },
+    {
+      "id": "hardcoded_secrets",
+      "question": "How do I avoid hardcoded secrets in source?",
+      "expected_source": "hardcoded-secrets.md",
+      "expected_topics": ["environment", "secret"]
+    },
+    {
+      "id": "path_traversal",
+      "question": "How do I prevent path traversal in file uploads?",
+      "expected_source": "path-traversal.md",
+      "expected_topics": ["path", "traversal"]
+    },
+    {
+      "id": "command_injection",
+      "question": "How do I prevent command injection from subprocess?",
+      "expected_source": "python-command-injection.md",
+      "expected_topics": ["shell", "argument"]
+    },
+    {
+      "id": "unsafe_deserialization",
+      "question": "Is pickle unsafe to deserialize?",
+      "expected_source": "python-unsafe-deserialization.md",
+      "expected_topics": ["pickle", "deserialization"]
+    },
+    {
+      "id": "xxe_java",
+      "question": "How do I disable XXE in Java XML parsing?",
+      "expected_source": "java-xxe-and-deserialization.md",
+      "expected_topics": ["entity", "xml"]
+    },
+    {
+      "id": "access_control",
+      "question": "How should I enforce access control for user records?",
+      "expected_source": "access-control-checks.md",
+      "expected_topics": ["authorization", "access"]
+    },
+    {
+      "id": "code_smells",
+      "question": "Which code smells indicate a long method?",
+      "expected_source": "code-smells-catalog.md",
+      "expected_topics": ["method", "long"]
+    },
+    {
+      "id": "severity_reference",
+      "question": "What severity does CWE-89 have?",
+      "expected_source": "cwe-owasp-severity-reference.md",
+      "expected_topics": ["cwe", "severity"]
+    }
+  ],
+  "off_topic": [
+    {"id": "capital_of_france", "question": "What is the capital of France?"},
+    {"id": "kubernetes_ingress", "question": "How do I configure a Kubernetes ingress controller?"}
+  ],
+  "follow_up": {
+    "first": "How do I prevent SQL injection in Python?",
+    "follow": "Why does that work?",
+    "expected_source": "python-sql-injection.md"
+  }
+}

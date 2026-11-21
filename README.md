@@ -521,3 +521,46 @@ WHAT WAS ADDED (all additive: no M1/M2 route, payload key or behaviour changed)
       real browser runs.
     - PMD coverage depends on the local environment and is reported honestly
       when unavailable.
+
+10. MILESTONE 4 - VALIDATED REPORT MODULE, END-TO-END SAMPLES, OPTIMISATION
+
+  10.1 What M4 added
+    No module was rebuilt. M4 added validation, measurable optimisation and
+    documentation on top of M1/M2/M3:
+    - three curated samples with a written oracle (tests/fixtures/m4/);
+    - a report-consistency suite, a severity-consistency suite, a retrieval
+      evaluation set and prompt regression tests;
+    - retrieval diversity so one document cannot fill every citation slot;
+    - one canonical health score in the JSON export (raw M2 value preserved as
+      m2_health_score), remediation filtered to findings the report contains,
+      and a note under the severity table explaining reported vs unique counts;
+    - hardened optional LLM prompts (assistant and remediation) exposed as
+      module constants and asserted, together with the exact request messages;
+    - the selected-finding assistant crash (`'Finding' object has no attribute
+      'get'`) fixed in `agents/assistant_agent.py` and covered by
+      tests/test_m4_selected_finding_assistant.py.
+
+  10.2 Measured results (this machine)
+    - pytest tests -q -> 275 passed (197 pre-existing + 72 M4 + 6 P1 regression).
+    - npm run lint -> 0 errors, 22 documented warnings; npm run build -> ok.
+    - Samples: 4 / 3 / 11 findings, health 70 / 45 / 29, review status
+      Changes Requested for all three; 12/12 expected detections present,
+      0 false positives, 9/9 clean controls unflagged.
+    - Retrieval: 12/12 top-1 and 12/12 top-3 on the M4 question set;
+      0/12 queries now return a single document for all three citations.
+    - Reports: PDF 3 / 3 / 6 pages with page numbering and run metadata;
+      JSON contains the same findings, health and remediation.
+
+  10.3 M4 documents
+    docs/milestone-4/M4_Gap_Analysis.md
+    docs/milestone-4/M4_Test_Report.md
+    docs/milestone-4/M4_Optimization_Report.md
+    docs/milestone-4/M4_Technical_Documentation.md
+    docs/milestone-4/M4_Final_Demonstration_Guide.md
+    docs/milestone-4/M4_Known_Limitations.md
+    docs/milestone-4/M4_Project_Report.md
+
+  10.4 Running only the M4 checks
+    python -m pytest tests/test_m4_samples.py tests/test_m4_report_validation.py \
+      tests/test_m4_severity_consistency.py tests/test_m4_rag_eval.py \
+      tests/test_m4_prompts.py -q

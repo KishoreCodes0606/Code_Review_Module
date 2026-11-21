@@ -39,10 +39,40 @@ def _finding_dict(finding) -> dict:
     return {"value": str(finding)}
 
 
+def _reported_remediation(remediation: dict | None, findings: list) -> dict | None:
+    """Keep only remediation items whose finding is in this report.
+
+    A report must never describe a fix for a finding it does not list. The PDF
+    already looks items up by finding id; this applies the same rule to the JSON
+    export so both formats state exactly the same set of remediations.
+    """
+    if not remediation:
+        return remediation
+    ids = {_get(finding, "id") for finding in findings}
+    items = list(remediation.get("findings") or [])
+    kept = [item for item in items if _get(item, "finding_id") in ids]
+    if len(kept) == len(items):
+        return remediation
+    filtered = dict(remediation)
+    filtered["findings"] = kept
+    filtered["finding_count"] = len(kept)
+    filtered["not_in_report"] = len(items) - len(kept)
+    return filtered
+
+
 def build_json_report(run: dict, findings: list, remediation: dict | None,
                       summary: dict | None) -> dict:
     findings = list(findings or [])
     health = compute_health(run.get("status"), findings)
+    # One canonical score per document: the de-duplicated M3 health value. The
+    # M2 raw number charges the same weakness twice when two engines report it,
+    # so it is kept under its own name instead of competing as "health_score".
+    run = dict(run or {})
+    raw_health = run.get("health_score")
+    if raw_health is not None and raw_health != health["score"]:
+        run["m2_health_score"] = raw_health
+    run["health_score"] = health["score"]
+    remediation = _reported_remediation(remediation, findings)
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -302,7 +332,9 @@ def build_pdf_report(run: dict, findings: list, remediation: dict | None,
              f"\u00b7 run {run.get('run_id')}"),
         small,
     ))
-    story.append(Paragraph(_esc(f"Generated {generated}"), small))
+    story.append(Paragraph(_esc(
+        f"Generated {generated} \u00b7 report schema {SCHEMA_VERSION}"
+    ), small))
     story.append(Paragraph(_esc(
         "PDF font: " + (fonts["source"] or "built-in Helvetica (WinAnsi)")
         + (" \u2014 Unicode text; characters this font lacks are shown as '?'"
@@ -390,6 +422,16 @@ def build_pdf_report(run: dict, findings: list, remediation: dict | None,
         ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
     ]))
     story.append(severity_table)
+    # The severity table counts reported findings; the health table above counts
+    # unique findings (one engine's duplicate of another rule is charged once).
+    # Saying so is what keeps the two tables from looking like a contradiction.
+    grouped = health.get("duplicates_ignored") or 0
+    story.append(Paragraph(_esc(
+        f"Counts above are reported findings. The health table counts "
+        f"{health.get('scored_finding_count')} unique finding(s)"
+        + (f" after grouping {grouped} duplicate report(s) of the same weakness" if grouped else "")
+        + "."
+    ), small))
 
     story.append(Paragraph("Prioritized actions", h1))
     priorities = (summary or {}).get("prioritized_fixes") or []

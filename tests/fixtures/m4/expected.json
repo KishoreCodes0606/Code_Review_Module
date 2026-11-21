@@ -1,0 +1,175 @@
+{
+  "schema": "m4.1",
+  "notes": [
+    "The oracle was written by reading each sample's source, not by copying detector output.",
+    "Detection entries accept an alias family where two engines legitimately name the same weakness (for example S-PY-SECRET and bandit-B105).",
+    "Locations are expressed as an anchor string plus a line tolerance because a detector may report the enclosing statement (execute call) or the line where the unsafe value was built.",
+    "security_controls are hand-written clean implementations: a security finding inside one of those spans is a false positive."
+  ],
+  "samples": [
+    {
+      "id": "sample1_basic_inventory",
+      "file": "tests/fixtures/m4/sample1_basic_inventory.py",
+      "language": "python",
+      "complexity": "low",
+      "purpose": "Small module: one input check, plain aggregation, a controlled SQL injection and a weak digest used as a cache key.",
+      "expected_detections": [
+        {
+          "rule_ids": ["S-PY-SQLI"],
+          "title": "SQL injection from string-built query",
+          "severity": "critical",
+          "category": "security",
+          "anchor": "cursor.execute(query)",
+          "line_tolerance": 1
+        },
+        {
+          "rule_ids": ["S-PY-CRYPTO"],
+          "title": "MD5 used for a digest",
+          "severity": "medium",
+          "category": "security",
+          "anchor": "hashlib.md5",
+          "line_tolerance": 0
+        }
+      ],
+      "expected_duplicate_families": ["bandit-B608", "bandit-B324"],
+      "security_controls": [
+        {"anchor": "def format_price", "span": 5, "why": "type/range check then pure formatting"},
+        {"anchor": "def total_quantity", "span": 5, "why": "plain integer aggregation"},
+        {"anchor": "def is_low_stock", "span": 3, "why": "single comparison, no sink"},
+        {"anchor": "def connect", "span": 3, "why": "fixed local database path"}
+      ],
+      "expected_absent_rules": [
+        "S-PY-CMDI", "S-PY-SHELL", "S-PY-DESER", "S-PY-EVAL", "S-PY-PATH",
+        "S-JAVA-SQLI", "S-JAVA-DESER", "S-JAVA-CRYPTO"
+      ],
+      "expected_remediation_with_code": ["S-PY-SQLI", "S-PY-CRYPTO"],
+      "expected_review_status": "CHANGES_REQUESTED"
+    },
+    {
+      "id": "sample2_medium_accounts",
+      "file": "tests/fixtures/m4/sample2_medium_accounts.java",
+      "language": "java",
+      "complexity": "medium",
+      "purpose": "Two classes: database access with statement concatenation, native deserialization, ECB encryption, plus one clean audit component.",
+      "expected_detections": [
+        {
+          "rule_ids": ["S-JAVA-SQLI"],
+          "title": "SQL injection through Statement concatenation",
+          "severity": "critical",
+          "category": "security",
+          "anchor": "stmt.executeQuery(sql)",
+          "line_tolerance": 1
+        },
+        {
+          "rule_ids": ["S-JAVA-DESER"],
+          "title": "ObjectInputStream on caller-supplied bytes",
+          "severity": "critical",
+          "category": "security",
+          "anchor": "stream.readObject()",
+          "line_tolerance": 1
+        },
+        {
+          "rule_ids": ["S-JAVA-CRYPTO"],
+          "title": "ECB mode cipher",
+          "severity": "medium",
+          "category": "security",
+          "anchor": "AES/ECB",
+          "line_tolerance": 1
+        }
+      ],
+      "expected_duplicate_families": [],
+      "security_controls": [
+        {"anchor": "final class AuditLog", "span": 20, "why": "validation plus list append, no security sink"}
+      ],
+      "expected_absent_rules": [
+        "S-JAVA-CMDI", "S-JAVA-XXE", "S-JAVA-SECRET", "S-JAVA-PATH", "S-JAVA-XSS",
+        "S-PY-SQLI", "S-PY-CMDI"
+      ],
+      "expected_remediation_with_code": ["S-JAVA-SQLI", "S-JAVA-DESER", "S-JAVA-CRYPTO"],
+      "expected_review_status": "CHANGES_REQUESTED"
+    },
+    {
+      "id": "sample3_complex_backend",
+      "file": "tests/fixtures/m4/sample3_complex_backend.py",
+      "language": "python",
+      "complexity": "high",
+      "purpose": "Backend with authentication, parameterized and vulnerable database access, path handling, process invocation, a hardcoded token and nesting/exception quality issues.",
+      "expected_detections": [
+        {
+          "rule_ids": ["bandit-B105", "S-PY-SECRET"],
+          "title": "Hardcoded credential in source",
+          "severity": "medium",
+          "category": "security",
+          "anchor": "API_TOKEN = ",
+          "line_tolerance": 0
+        },
+        {
+          "rule_ids": ["S-PY-SQLI"],
+          "title": "SQL injection from f-string query",
+          "severity": "critical",
+          "category": "security",
+          "anchor": "cursor.execute(query)",
+          "line_tolerance": 1
+        },
+        {
+          "rule_ids": ["S-PY-CRYPTO"],
+          "title": "MD5 used for a password digest",
+          "severity": "medium",
+          "category": "security",
+          "anchor": "hashlib.md5",
+          "line_tolerance": 0
+        },
+        {
+          "rule_ids": ["S-PY-PATH"],
+          "title": "Unconfined caller-controlled path",
+          "severity": "medium",
+          "category": "security",
+          "anchor": "open(os.path.join(DATA_ROOT",
+          "line_tolerance": 1
+        },
+        {
+          "rule_ids": ["S-PY-SHELL"],
+          "title": "subprocess with shell=True and concatenated input",
+          "severity": "critical",
+          "category": "security",
+          "anchor": "subprocess.call",
+          "line_tolerance": 0
+        },
+        {
+          "rule_ids": ["Q-broad-exception"],
+          "title": "Bare except hides authentication failures",
+          "severity": "low",
+          "category": "quality",
+          "anchor": "    except:",
+          "line_tolerance": 1
+        },
+        {
+          "rule_ids": ["Q-deep-nesting"],
+          "title": "Four-level nesting in the dashboard renderer",
+          "severity": "low",
+          "category": "quality",
+          "anchor": "def render_dashboard",
+          "line_tolerance": 2
+        }
+      ],
+      "expected_duplicate_families": ["bandit-B602", "bandit-B608", "bandit-B324"],
+      "expected_additional_rules": ["bandit-B404"],
+      "security_controls": [
+        {"anchor": "def load_user", "span": 6, "why": "bound SQL parameter"},
+        {"anchor": "def read_upload", "span": 10, "why": "realpath plus containment check"},
+        {"anchor": "def summarise_orders", "span": 8, "why": "guard clause and integer addition"},
+        {"anchor": "def get_connection", "span": 4, "why": "fixed local database path"}
+      ],
+      "expected_absent_rules": [
+        "S-PY-EVAL", "S-PY-DESER", "S-PY-CMDI",
+        "S-JAVA-SQLI", "S-JAVA-DESER", "S-JAVA-CRYPTO"
+      ],
+      "expected_remediation_with_code": [
+        "S-PY-SQLI", "S-PY-CRYPTO", "S-PY-PATH", "S-PY-SHELL",
+        "Q-broad-exception", "Q-deep-nesting"
+      ],
+      "expected_manual_review_rules": ["bandit-B404"],
+      "expected_review_status": "CHANGES_REQUESTED"
+    }
+  ]
+}

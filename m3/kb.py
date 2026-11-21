@@ -336,23 +336,55 @@ class KnowledgeBase:
             index = self.vector_index()
             chosen = "hybrid" if index.available else "bm25"
         if chosen == "bm25":
-            return self._bm25_search(query, k=k, language=language, owasp=owasp)
+            return self._diversify(
+                self._bm25_search(query, k=k, language=language, owasp=owasp), k
+            )
 
         index = self.vector_index()
         dense = index.search(query, k=max(k * 4, 20), language=language, owasp=owasp)
         if chosen == "vector":
             if dense:
-                return dense[: max(1, k)]
+                return self._diversify(dense, k)
             # Honest fallback: the vector backend could not answer (provider or
             # query issue), so lexical retrieval keeps the assistant useful.
             self.errors.append("vector retrieval unavailable; fell back to BM25")
-            return self._bm25_search(query, k=k, language=language, owasp=owasp)
+            return self._diversify(
+                self._bm25_search(query, k=k, language=language, owasp=owasp), k
+            )
 
         lexical = self._bm25_search(query, k=max(k * 4, 20), language=language, owasp=owasp)
         fused = _reciprocal_rank_fusion(lexical, dense)
         if fused:
-            return fused[: max(1, k)]
-        return lexical[: max(1, k)]
+            return self._diversify(fused, k)
+        return self._diversify(lexical, k)
+
+    @staticmethod
+    def _diversify(rows: list, k: int, *, max_per_source: int = 2) -> list:
+        """Keep the ranking but stop one document from filling every slot.
+
+        A knowledge-base document is chunked into several sections that repeat
+        the same guidance. Three citations of the same document crowd out the
+        second source a reviewer needs, so at most ``max_per_source`` chunks per
+        source file are returned; the skipped duplicates are then appended in
+        their original order, which means a list is never shortened.
+        """
+        limit = max(1, k)
+        kept: list = []
+        skipped: list = []
+        seen: dict[str, int] = {}
+        for chunk, score in rows:
+            source = chunk.source or "unknown"
+            if seen.get(source, 0) < max_per_source:
+                kept.append((chunk, score))
+                seen[source] = seen.get(source, 0) + 1
+            else:
+                skipped.append((chunk, score))
+        result = kept[:limit]
+        for row in skipped:
+            if len(result) >= limit:
+                break
+            result.append(row)
+        return result
 
     def _bm25_search(self, query: str, *, k: int = 5, language: str | None = None,
                      owasp: str | None = None) -> list[tuple[KBChunk, float]]:
@@ -410,7 +442,9 @@ class KnowledgeBase:
         if not scored:
             return []
         scored.sort(key=lambda item: (-item[1], self.chunks[item[0]].chunk_id))
-        return [(self.chunks[idx], score) for idx, score in scored[: max(1, k)]]
+        # Retrieve a wider pool than k so _diversify can still fill k slots from
+        # more than one document without lowering the top result.
+        return [(self.chunks[idx], score) for idx, score in scored[: max(1, k * 3)]]
 
     def status(self) -> dict:
         sources = sorted({chunk.source for chunk in self.chunks})
